@@ -8,6 +8,7 @@ import { Towers } from './Tower';
 import { Enemies } from './Enemy';
 import { Projectiles } from './Projectile';
 import { TreeMeshes } from './Trees';
+// Structures removed — no 3D models available for churches/bridges/etc.
 import { useGameStore } from '@/lib/store';
 import * as THREE from 'three';
 

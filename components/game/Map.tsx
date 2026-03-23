@@ -8,6 +8,7 @@ import { snapToGrid } from '@/lib/mapUtils';
 import { ALL_PATHS } from '@/lib/pathData';
 import { TOWER_DEFS } from '@/lib/towerDefs';
 import { Line, Html } from '@react-three/drei';
+import { useFlattenMaterial } from './FlattenMaterial';
 import { getElevation } from '@/lib/elevation';
 import type { ThreeEvent } from '@react-three/fiber';
 
@@ -297,6 +298,16 @@ export function Map() {
 
   const handlePointerLeave = () => setHoverPos(null);
 
+  // Building materials with enemy-proximity flattening
+  const westMat = useFlattenMaterial({
+    vertexColors: true, roughness: 0.75, transparent: true,
+    opacity: buildingsHovered ? 0.75 : 1, side: THREE.DoubleSide,
+  });
+  const eastMat = useFlattenMaterial({
+    vertexColors: true, roughness: 0.75, transparent: true,
+    opacity: buildingsHovered ? 0.75 : 1, side: THREE.DoubleSide,
+  });
+
   // ── Island/shore shape geometry ──────────────────────────────────
   // Compute island ground shape from actual building positions at runtime
   const islandGeo = useMemo(() => {
@@ -352,7 +363,7 @@ export function Map() {
 
     // High-res terrain mesh that follows real elevation
     // Colored by land use: roads=gray, parks=green, urban=beige/gray, water=purple/blue
-    const gridRes = 150;
+    const gridRes = 250;
     const size = 300;
     const geo = new THREE.PlaneGeometry(size, size, gridRes, gridRes);
     geo.rotateX(-Math.PI / 2);
@@ -520,21 +531,19 @@ export function Map() {
       {/* ── Major roads (wider, brighter) ── */}
       {geos?.majorRoads && <mesh geometry={geos.majorRoads} position={[0, 0.01, 0]}><meshStandardMaterial color="#9a958a" roughness={0.6} /></mesh>}
 
-      {/* ── Buildings (split into west/east to avoid merge limits) ── */}
+      {/* ── Buildings (flatten near enemies) ── */}
       {geos?.westWalls && (
         <mesh geometry={geos.westWalls}
           onPointerEnter={() => setBuildingsHovered(true)}
           onPointerLeave={() => setBuildingsHovered(false)}>
-          <meshStandardMaterial vertexColors roughness={0.75} metalness={0} side={THREE.DoubleSide}
-            transparent opacity={buildingsHovered ? 0.75 : 1} />
+          <meshStandardMaterial {...westMat.props} />
         </mesh>
       )}
       {geos?.eastWalls && (
         <mesh geometry={geos.eastWalls}
           onPointerEnter={() => setBuildingsHovered(true)}
           onPointerLeave={() => setBuildingsHovered(false)}>
-          <meshStandardMaterial vertexColors roughness={0.75} metalness={0} side={THREE.DoubleSide}
-            transparent opacity={buildingsHovered ? 0.75 : 1} />
+          <meshStandardMaterial {...eastMat.props} />
         </mesh>
       )}
 

@@ -227,7 +227,7 @@ function EnemyUnit({
   const MeshComponent = ENEMY_MESHES[enemy.defId];
 
   // Bigger enemies so they're visible at zoom level
-  const scale = enemy.defId === 'dog' ? 5.0 : enemy.defId === 'pigeon' ? 4.0 : 3.5;
+  const scale = (enemy.defId === 'dog' ? 5.0 : enemy.defId === 'pigeon' ? 4.0 : 3.5) * 0.4;
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
