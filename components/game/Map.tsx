@@ -4,18 +4,29 @@ import { useMemo, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useGameStore } from '@/lib/store';
-import { snapToGrid } from '@/lib/mapUtils';
+import {
+  snapToGrid,
+  computeBlockedCells,
+  getFootprintBaseElevation,
+  getTerrainSurfaceY,
+} from '@/lib/mapUtils';
 import { ALL_PATHS } from '@/lib/pathData';
 import { TOWER_DEFS } from '@/lib/towerDefs';
-import { Line, Html } from '@react-three/drei';
+import { Line } from '@react-three/drei';
 import { createGroundTexture } from './GroundTexture';
 import { useFlattenMaterial } from './FlattenMaterial';
 import { getElevation } from '@/lib/elevation';
 import { useFrame } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
+import { TreeMeshes } from './Trees';
 
 // ── Types ──────────────────────────────────────────────────────────────
-interface BuildingData { id: number; coords: [number, number][]; height: number; type: string; }
+interface BuildingData {
+  id: number;
+  coords: [number, number][];
+  height: number;
+  type: string;
+}
 interface RoadData { coords: [number, number][]; width: number; importance: number; name: string | null; }
 interface ParkData { coords: [number, number][]; }
 interface MapData {
@@ -29,54 +40,56 @@ interface MapData {
 interface LandZone { type: string; coords: [number, number][]; }
 
 // ── Building colors by type ───────────────────────────────────────────
+// Varied hues, unified through deep value — buildings differ in color
+// but match the ground's darkness so nothing jumps out of Layer 1.
 const BUILDING_TYPE_COLORS: Record<string, THREE.Color> = {
-  apartments:      new THREE.Color('#c9a84c'),  // ochre/yellow — most of Södermalm
-  residential:     new THREE.Color('#c4976b'),  // warm tan
-  house:           new THREE.Color('#c4976b'),
-  detached:        new THREE.Color('#c4976b'),
-  semidetached_house: new THREE.Color('#c4976b'),
-  allotment_house: new THREE.Color('#8aaa70'),  // muted green — garden cottages
-  office:          new THREE.Color('#9098a8'),  // blue-gray
-  commercial:      new THREE.Color('#9098a8'),
-  retail:          new THREE.Color('#b8946a'),  // warm brown
-  hotel:           new THREE.Color('#c8a878'),  // golden
-  industrial:      new THREE.Color('#808080'),  // neutral gray
-  shed:            new THREE.Color('#7a7a6a'),  // dark gray-green
-  garage:          new THREE.Color('#7a7a6a'),
-  garages:         new THREE.Color('#7a7a6a'),
-  school:          new THREE.Color('#c8b070'),  // sandy yellow
-  kindergarten:    new THREE.Color('#c8b070'),
-  university:      new THREE.Color('#c8b070'),
-  church:          new THREE.Color('#d8cdb8'),  // cream/stone
-  cathedral:       new THREE.Color('#d8cdb8'),
-  chapel:          new THREE.Color('#d8cdb8'),
-  mosque:          new THREE.Color('#d8cdb8'),
-  hospital:        new THREE.Color('#d4d4d4'),  // white
-  palace:          new THREE.Color('#d8c8a0'),  // pale gold
-  government:      new THREE.Color('#b0a890'),  // stone
-  public:          new THREE.Color('#b0a890'),
-  civic:           new THREE.Color('#b0a890'),
-  theatre:         new THREE.Color('#c0a080'),  // warm terracotta
-  museum:          new THREE.Color('#c0a080'),
-  stadium:         new THREE.Color('#90a080'),  // sage
-  sports_centre:   new THREE.Color('#90a080'),
-  sports_hall:     new THREE.Color('#90a080'),
-  grandstand:      new THREE.Color('#90a080'),
-  train_station:   new THREE.Color('#a09090'),  // gray-mauve
-  transportation:  new THREE.Color('#a09090'),
-  ship:            new THREE.Color('#606878'),  // dark blue-gray
-  boat:            new THREE.Color('#606878'),
-  construction:    new THREE.Color('#a09060'),  // dusty yellow
-  kiosk:           new THREE.Color('#b89868'),  // light brown
-  service:         new THREE.Color('#908880'),  // warm gray
-  roof:            new THREE.Color('#888078'),
-  yes:             new THREE.Color('#b8a088'),  // default warm beige
+  apartments:      new THREE.Color('#6a5a28'),  // deep gold
+  residential:     new THREE.Color('#4a6838'),  // deep sage
+  house:           new THREE.Color('#4a6838'),
+  detached:        new THREE.Color('#4a6838'),
+  semidetached_house: new THREE.Color('#4a6838'),
+  allotment_house: new THREE.Color('#3a6830'),  // deep garden green
+  office:          new THREE.Color('#2a5858'),  // deep teal
+  commercial:      new THREE.Color('#2a5858'),
+  retail:          new THREE.Color('#5a5828'),  // deep olive-gold
+  hotel:           new THREE.Color('#6a5830'),  // deep amber
+  industrial:      new THREE.Color('#3a3a40'),  // deep blue-slate
+  shed:            new THREE.Color('#2a3830'),  // deep dark green
+  garage:          new THREE.Color('#2a3830'),
+  garages:         new THREE.Color('#2a3830'),
+  school:          new THREE.Color('#486838'),  // deep warm green
+  kindergarten:    new THREE.Color('#486838'),
+  university:      new THREE.Color('#486838'),
+  church:          new THREE.Color('#5a5040'),  // deep warm stone
+  cathedral:       new THREE.Color('#5a5040'),
+  chapel:          new THREE.Color('#5a5040'),
+  mosque:          new THREE.Color('#5a5040'),
+  hospital:        new THREE.Color('#385858'),  // deep cool teal
+  palace:          new THREE.Color('#5a5830'),  // deep golden
+  government:      new THREE.Color('#384858'),  // deep slate-blue
+  public:          new THREE.Color('#384858'),
+  civic:           new THREE.Color('#384858'),
+  theatre:         new THREE.Color('#583848'),  // deep wine
+  museum:          new THREE.Color('#583848'),
+  stadium:         new THREE.Color('#385830'),  // deep sport green
+  sports_centre:   new THREE.Color('#385830'),
+  sports_hall:     new THREE.Color('#385830'),
+  grandstand:      new THREE.Color('#385830'),
+  train_station:   new THREE.Color('#383840'),  // deep iron
+  transportation:  new THREE.Color('#383840'),
+  ship:            new THREE.Color('#283848'),  // deep maritime blue
+  boat:            new THREE.Color('#283848'),
+  construction:    new THREE.Color('#585028'),  // deep dusty gold
+  kiosk:           new THREE.Color('#4a5830'),  // deep olive
+  service:         new THREE.Color('#3a4838'),  // deep utility green
+  roof:            new THREE.Color('#3a4830'),  // deep generic
+  yes:             new THREE.Color('#4a5838'),  // deep sage default
 };
-const DEFAULT_BUILDING_COLOR = new THREE.Color('#b8a088');
+const DEFAULT_BUILDING_COLOR = new THREE.Color('#4a5838');
 
 const ROOF_COLORS = [
-  new THREE.Color('#6b5a48'), new THREE.Color('#5a4a3a'),
-  new THREE.Color('#7a6855'), new THREE.Color('#4a3a2c'),
+  new THREE.Color('#2a3828'), new THREE.Color('#282830'),
+  new THREE.Color('#383028'), new THREE.Color('#202830'),
 ];
 
 // ── CRITICAL: Shape creation helper that negates Z ────────────────────
@@ -92,6 +105,9 @@ function makeShape(coords: [number, number][]): THREE.Shape {
   return shape;
 }
 
+// ── Building height multiplier (1 = original, 0.5 = half height) ─────
+const BUILDING_HEIGHT_SCALE = 0.67;
+
 // ── Build buildings with vertex colors ────────────────────────────────
 function buildBuildings(buildings: BuildingData[]): {
   walls: THREE.BufferGeometry | null;
@@ -100,8 +116,9 @@ function buildBuildings(buildings: BuildingData[]): {
   const wallGeos: THREE.BufferGeometry[] = [];
   const roofGeos: THREE.BufferGeometry[] = [];
 
-  for (const building of buildings) {
-    if (building.coords.length < 3) continue;
+  for (const raw of buildings) {
+    if (raw.coords.length < 3) continue;
+    const building = { ...raw, height: raw.height * BUILDING_HEIGHT_SCALE };
 
     try {
       const shape = makeShape(building.coords);
@@ -110,28 +127,24 @@ function buildBuildings(buildings: BuildingData[]): {
         bevelEnabled: false,
       });
       wallGeo.rotateX(-Math.PI / 2);
-      // Raise building to LOWEST elevation beneath it (avoids floating on cliffs)
-      let minElev = Infinity;
-      for (const [x, z] of building.coords) {
-        const e = getElevation(x, z);
-        if (e < minElev) minElev = e;
-      }
+      // Anchor the footprint to the lowest sampled terrain point under it so no corner floats.
+      const minElev = getFootprintBaseElevation(building.coords);
       wallGeo.translate(0, minElev, 0);
 
       // Vertex colors based on building type
-      // Residential buildings get varied warm tones (like the old Stockholm palette)
+      // Residential buildings — varied deep hues cycling per building
       const isResidential = ['apartments', 'residential', 'house', 'detached', 'semidetached_house', 'yes'].includes(building.type);
       let color: THREE.Color;
       if (isResidential) {
         const RESIDENTIAL_PALETTE = [
-          new THREE.Color('#c9a84c'), // ochre
-          new THREE.Color('#c4976b'), // salmon tan
-          new THREE.Color('#b8945c'), // warm amber
-          new THREE.Color('#cc9966'), // golden brown
-          new THREE.Color('#c47a6b'), // dusty rose
-          new THREE.Color('#d8cdb8'), // cream
-          new THREE.Color('#b89070'), // terracotta
-          new THREE.Color('#c4a872'), // sandy gold
+          new THREE.Color('#6a5a28'), // deep gold
+          new THREE.Color('#4a6838'), // deep sage
+          new THREE.Color('#5a4838'), // deep clay-rose
+          new THREE.Color('#385848'), // deep teal-green
+          new THREE.Color('#585028'), // deep olive
+          new THREE.Color('#4a4850'), // deep cool mauve
+          new THREE.Color('#586030'), // deep warm olive
+          new THREE.Color('#3a5050'), // deep sea-green
         ];
         color = RESIDENTIAL_PALETTE[building.id % RESIDENTIAL_PALETTE.length];
       } else {
@@ -225,26 +238,92 @@ function buildBuildings(buildings: BuildingData[]): {
   return { walls, roofs };
 }
 
-// ── Street labels ─────────────────────────────────────────────────────
-interface StreetLabel { name: string; position: [number, number, number]; }
-const LABEL_STREETS = ['Götgatan', 'Hornsgatan', 'Ringvägen', 'Rosenlundsgatan', 'Folkungagatan'];
-function findLabels(roads: RoadData[]): StreetLabel[] {
-  const labels: StreetLabel[] = [];
-  const found = new Set<string>();
-  for (const road of roads) {
-    if (!road.name || found.has(road.name)) continue;
-    if (!LABEL_STREETS.includes(road.name)) continue;
-    if (road.coords.length < 2) continue;
-    found.add(road.name);
-    const mid = Math.floor(road.coords.length / 2);
-    const [x, z] = road.coords[mid];
-    labels.push({ name: road.name, position: [x, getElevation(x, z) + 3, z] });
-  }
-  return labels;
+const PATH_COLORS = ['#ff9f43', '#ee5a24', '#18dcff'];
+const MIN_TOWER_SPACING = 1.5;
+
+// ── Placement Preview ─────────────────────────────────────────────────
+function PlacementPreview({
+  x, z, range, canPlace, towerColor,
+}: {
+  x: number; z: number; range: number; canPlace: boolean; towerColor: string;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const y = getElevation(x, z);
+
+  useFrame((state) => {
+    if (!groupRef.current) return;
+    const t = state.clock.elapsedTime;
+    if (canPlace) {
+      // Gentle breathing pulse
+      const s = 1 + Math.sin(t * 4) * 0.07;
+      groupRef.current.scale.set(s, 1, s);
+    } else {
+      groupRef.current.scale.set(1, 1, 1);
+    }
+  });
+
+  const color = canPlace ? towerColor : '#ef4444';
+  const ringColor = canPlace ? '#4ade80' : '#ef4444';
+  const borderColor = canPlace ? '#22c55e' : '#dc2626';
+
+  return (
+    <group ref={groupRef} position={[x, y + 0.08, z]}>
+      {/* Solid placement disc — shows tower color when valid */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.5, 24]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={canPlace ? 0.6 : 0.4}
+          transparent
+          opacity={canPlace ? 0.75 : 0.55}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Border ring — green/red validity indicator */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+        <ringGeometry args={[0.45, 0.62, 24]} />
+        <meshStandardMaterial
+          color={borderColor}
+          emissive={borderColor}
+          emissiveIntensity={1.0}
+          transparent
+          opacity={0.9}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Range ring — clear visible ring */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+        <ringGeometry args={[range - 0.12, range + 0.08, 64]} />
+        <meshBasicMaterial
+          color={ringColor}
+          transparent
+          opacity={canPlace ? 0.35 : 0.2}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Range fill — subtle area indicator */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
+        <circleGeometry args={[range, 64]} />
+        <meshBasicMaterial
+          color={ringColor}
+          transparent
+          opacity={canPlace ? 0.06 : 0.03}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+    </group>
+  );
 }
 
-const PATH_COLORS = ['#ff9f43', '#ee5a24', '#18dcff'];
-const MAP_FADE_DURATION = 0.9;
+export const MAP_FADE_DURATION = 0.9;
 const MAP_ENTRY_OFFSET = new THREE.Vector3(0, -0.8, 3.5);
 const MAP_ENTRY_SCALE = 0.985;
 
@@ -288,12 +367,14 @@ function applyEntryTransform(group: THREE.Group | null, progress: number) {
 }
 
 // ── Main Map Component ─────────────────────────────────────────────────
-export function Map() {
+export function Map({ onRevealChange }: { onRevealChange?: (isRevealed: boolean) => void }) {
   const selectedTowerDef = useGameStore((s) => s.selectedTowerDef);
   const placeTower = useGameStore((s) => s.placeTower);
   const phase = useGameStore((s) => s.phase);
   const towers = useGameStore((s) => s.towers);
   const money = useGameStore((s) => s.money);
+  const levelIndex = useGameStore((s) => s.levelIndex);
+  const waveIndex = useGameStore((s) => s.waveIndex);
 
   const [mapData, setMapData] = useState<MapData | null>(null);
   const [landZones, setLandZones] = useState<LandZone[]>([]);
@@ -307,6 +388,7 @@ export function Map() {
   const fadeOpacityRef = useRef(0);
   const fadeStartTimeRef = useRef<number | null>(null);
   const fadeFrameRef = useRef<number | null>(null);
+  const placementLockUntilRef = useRef(0);
 
   useEffect(() => {
     fetch('/data/sodermalm.json?v=11')
@@ -327,6 +409,39 @@ export function Map() {
 
   const isPlacing = selectedTowerDef && (phase === 'playing' || phase === 'between-waves');
 
+  useEffect(() => {
+    if (phase === 'playing' || phase === 'between-waves') {
+      placementLockUntilRef.current = performance.now() + 300;
+    }
+  }, [phase, waveIndex, levelIndex, selectedTowerDef]);
+
+  // ── Precompute cells blocked by buildings ──────────────────────────
+  const blockedCells = useMemo(() => {
+    if (!mapData) return new Set<string>();
+    return computeBlockedCells(mapData.buildings);
+  }, [mapData]);
+
+  // ── Unified placement validation ───────────────────────────────────
+  const isPositionValid = (pos: { x: number; z: number }): boolean => {
+    if (!selectedTowerDef) return false;
+    const def = TOWER_DEFS[selectedTowerDef];
+    if (!def || money < def.cost) return false;
+
+    // Water check
+    if (getElevation(pos.x, pos.z) <= 0.3) return false;
+
+    // Building check
+    if (blockedCells.has(`${pos.x},${pos.z}`)) return false;
+
+    // Spacing from other towers
+    for (const t of towers) {
+      const dx = t.position.x - pos.x, dz = t.position.z - pos.z;
+      if (Math.sqrt(dx * dx + dz * dz) < MIN_TOWER_SPACING) return false;
+    }
+
+    return true;
+  };
+
   const getPlacementPoint = (ray: THREE.Ray) => {
     const terrainMesh = terrainPickMeshRef.current;
     if (!terrainMesh) return null;
@@ -342,10 +457,12 @@ export function Map() {
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     if (!selectedTowerDef) return;
     if (phase !== 'playing' && phase !== 'between-waves') return;
+    if (performance.now() < placementLockUntilRef.current) return;
     e.stopPropagation();
     const point = getPlacementPoint(e.ray);
     if (!point) return;
     const snapped = snapToGrid({ x: point.x, z: point.z });
+    if (!isPositionValid(snapped)) return;
     placeTower(selectedTowerDef, snapped);
   };
 
@@ -359,12 +476,7 @@ export function Map() {
     }
     const snapped = snapToGrid({ x: point.x, z: point.z });
     setHoverPos(snapped);
-    const def = TOWER_DEFS[selectedTowerDef];
-    if (!def || money < def.cost) { setCanPlace(false); return; }
-    setCanPlace(!towers.some(t => {
-      const dx = t.position.x - snapped.x, dz = t.position.z - snapped.z;
-      return Math.sqrt(dx * dx + dz * dz) < 2.5;
-    }));
+    setCanPlace(isPositionValid(snapped));
   };
 
   const handlePointerLeave = () => setHoverPos(null);
@@ -432,9 +544,7 @@ export function Map() {
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      const elev = getElevation(x, z);
-      const isLand = elev > 0.3;
-      pos.setY(i, isLand ? Math.max(elev, 0.1) - 0.15 : -0.35);
+      pos.setY(i, getTerrainSurfaceY(x, z));
     }
     pos.needsUpdate = true;
 
@@ -483,9 +593,7 @@ export function Map() {
     const west = buildBuildings(westBuildings);
     const east = buildBuildings(eastBuildings);
 
-    const labels = findLabels(mapData.roads);
-
-    return { westWalls: west.walls, eastWalls: east.walls, labels };
+    return { westWalls: west.walls, eastWalls: east.walls };
   }, [mapData]);
 
   const isMapReady = Boolean(mapData && islandGeo && geos && landZonesSettled && pitchesSettled);
@@ -497,6 +605,7 @@ export function Map() {
     }
 
     if (!isMapReady) {
+      onRevealChange?.(false);
       fadeStartTimeRef.current = null;
       fadeOpacityRef.current = 0;
       applyFadeOpacity(mapGroupRef.current, 0);
@@ -512,6 +621,7 @@ export function Map() {
     let firstFrame: number | null = null;
     firstFrame = requestAnimationFrame(() => {
       fadeFrameRef.current = requestAnimationFrame(() => {
+        onRevealChange?.(true);
         fadeStartTimeRef.current = performance.now();
         fadeFrameRef.current = null;
       });
@@ -525,7 +635,7 @@ export function Map() {
         fadeFrameRef.current = null;
       }
     };
-  }, [isMapReady]);
+  }, [isMapReady, onRevealChange]);
 
   useFrame(() => {
     if (!isMapReady) return;
@@ -583,6 +693,8 @@ export function Map() {
           </mesh>
         )}
 
+        <TreeMeshes />
+
         {/* ── Enemy path glow (visible through buildings) ── */}
         {/* ── Enemy path (main only) ── */}
         <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
@@ -591,18 +703,6 @@ export function Map() {
         <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
           color={PATH_COLORS[0]} lineWidth={4} opacity={0.8} transparent
           depthTest={true} depthWrite={false} />
-
-        {/* ── Street labels ── */}
-        {geos?.labels?.map((l) => (
-          <Html key={l.name} position={l.position} center transform scale={0.5}
-            style={{ pointerEvents: 'none', userSelect: 'none' }}>
-            <div style={{
-              color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 800,
-              letterSpacing: '0.15em', textTransform: 'uppercase',
-              textShadow: '0 0 8px rgba(0,0,0,0.9)', whiteSpace: 'nowrap',
-            }}>{l.name}</div>
-          </Html>
-        ))}
       </group>
 
       {/* ── Click plane for tower placement (barely visible, above buildings) ── */}
@@ -619,16 +719,13 @@ export function Map() {
 
       {/* ── Placement preview ── */}
       {hoverPos && isPlacing && selectedTowerDef && (
-        <group position={[hoverPos.x, getElevation(hoverPos.x, hoverPos.z) + 0.1, hoverPos.z]}>
-          <mesh rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[TOWER_DEFS[selectedTowerDef].range - 0.2, TOWER_DEFS[selectedTowerDef].range, 48]} />
-            <meshBasicMaterial color={canPlace ? '#5cb85c' : '#e74c3c'} transparent opacity={0.15} />
-          </mesh>
-          <mesh rotation={[-Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[0.55, 16]} />
-            <meshBasicMaterial color={canPlace ? '#5cb85c' : '#e74c3c'} transparent opacity={0.3} />
-          </mesh>
-        </group>
+        <PlacementPreview
+          x={hoverPos.x}
+          z={hoverPos.z}
+          range={TOWER_DEFS[selectedTowerDef].range}
+          canPlace={canPlace}
+          towerColor={TOWER_DEFS[selectedTowerDef].color}
+        />
       )}
 
     </group>

@@ -1,6 +1,6 @@
 'use client';
 
-import { startTransition, useRef, useState } from 'react';
+import { startTransition, useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '@/lib/store';
 import { getElevation } from '@/lib/elevation';

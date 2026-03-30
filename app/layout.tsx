@@ -1,32 +1,24 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Pixelify_Sans } from "next/font/google";
 import "./globals.css";
 
-const ruderPlakat = localFont({
-  src: "../public/fonts/RuderPlakatLL.woff2",
+const mostWave = localFont({
+  src: "../public/fonts/most-wave.otf",
   variable: "--font-display",
   display: "swap",
 });
 
-const neueMontreal = localFont({
-  src: [
-    { path: "../public/fonts/PPNeueMontreal-Regular.woff2", weight: "400" },
-    { path: "../public/fonts/PPNeueMontreal-Medium.woff2", weight: "500" },
-  ],
-  variable: "--font-body",
-  display: "swap",
-});
-
-const neueMontrealMono = localFont({
-  src: "../public/fonts/PPNeueMontrealMono.woff2",
-  variable: "--font-mono",
-  weight: "500",
+const pixelifySans = Pixelify_Sans({
+  subsets: ["latin"],
+  variable: "--font-game",
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Fjodor's Defence",
-  description: "Defend Södermalm from invaders - a tower defence game",
+  title: "Fjodor's Defense",
+  description: "Defend Södermalm from invaders - a tower defense game",
 };
 
 export default function RootLayout({
@@ -35,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${ruderPlakat.variable} ${neueMontreal.variable} ${neueMontrealMono.variable} h-full`}>
+    <html lang="en" className={`${mostWave.variable} ${pixelifySans.variable} h-full`}>
       <body className="h-full overflow-hidden m-0 p-0">{children}</body>
     </html>
   );

@@ -8,24 +8,28 @@ import type {
   SpawnState,
 } from './types';
 import { TOWER_DEFS } from './towerDefs';
-import { ENEMY_DEFS } from './enemyDefs';
-import { WAVES } from './waves';
 import { ALL_PATHS } from './pathData';
+import { CAMPAIGN } from './levels/loadCampaign';
+import type { ResolvedCampaign, ResolvedLevel, ResolvedWave } from './levels/types';
+import { advanceCampaignProgress, getLevelRuntimeState } from './levels/runtime';
+import { createEnemyFromGroup } from './gameplay/spawning';
 import { distance } from './mapUtils';
 
-// ── ID generator ───────────────────────────────────────────────────────
 let _nextId = 0;
 function uid(): string {
   return `e${++_nextId}`;
 }
 
-// ── Store interface ────────────────────────────────────────────────────
 interface GameStore {
-  // State
   phase: GamePhase;
+  campaign: ResolvedCampaign;
+  levelIndex: number;
+  waveIndex: number;
+  currentLevel: ResolvedLevel | null;
+  currentWave: ResolvedWave | null;
+  availableTowerIds: string[];
   money: number;
   lives: number;
-  wave: number;
   gameTime: number;
   towers: TowerInstance[];
   enemies: EnemyInstance[];
@@ -33,7 +37,6 @@ interface GameStore {
   selectedTowerDef: string | null;
   spawnStates: SpawnState[];
 
-  // Actions
   startGame: () => void;
   startWave: () => void;
   placeTower: (defId: string, position: Vec2) => boolean;
@@ -41,47 +44,52 @@ interface GameStore {
   tick: (delta: number) => void;
 }
 
-// ── Constants ──────────────────────────────────────────────────────────
-const STARTING_MONEY = 150;
-const STARTING_LIVES = 20;
+type StoreSetter = (partial: Partial<GameStore>) => void;
+
 const PROJECTILE_HIT_RADIUS = 0.6;
 const AOE_RADIUS = 4;
 const SLOW_DURATION = 2.0;
 const SLOW_FACTOR = 0.5;
 const MIN_TOWER_SPACING = 1.5;
 
-// ── Pure helper functions ──────────────────────────────────────────────
+function createSpawnStates(wave: ResolvedWave): SpawnState[] {
+  return wave.groups.map((_, index) => ({
+    groupIndex: index,
+    spawned: 0,
+    timer: 0,
+  }));
+}
+
+function resetTowersForWave(towers: TowerInstance[]): TowerInstance[] {
+  return towers.map((tower) => ({ ...tower, lastFireTime: -100, targetEnemyId: null }));
+}
 
 function moveEnemy(enemy: EnemyInstance, delta: number): boolean {
-  const def = ENEMY_DEFS[enemy.defId];
-  const path = ALL_PATHS[enemy.pathIndex];
+  const pathPoints = ALL_PATHS[enemy.pathIndex];
+  if (!pathPoints || pathPoints.length === 0) {
+    throw new Error(`Missing path at index ${enemy.pathIndex}`);
+  }
 
-  // Already past the end
-  if (enemy.waypointIndex >= path.length) return true;
+  if (enemy.waypointIndex >= pathPoints.length) return true;
 
-  // Calculate speed (apply slow debuff)
-  const speed = def.speed * (enemy.slowTimer > 0 ? SLOW_FACTOR : 1.0);
-  const target = path[enemy.waypointIndex];
+  const speed = enemy.speed * (enemy.slowTimer > 0 ? SLOW_FACTOR : 1.0);
+  const target = pathPoints[enemy.waypointIndex];
   const dx = target.x - enemy.position.x;
   const dz = target.z - enemy.position.z;
   const dist = Math.sqrt(dx * dx + dz * dz);
   const step = speed * delta;
 
   if (step >= dist) {
-    // Reached waypoint
     enemy.position = { x: target.x, z: target.z };
     enemy.waypointIndex++;
-    // Check if past end after advancing
-    if (enemy.waypointIndex >= path.length) return true;
+    if (enemy.waypointIndex >= pathPoints.length) return true;
   } else {
-    // Move toward waypoint
     enemy.position = {
       x: enemy.position.x + (dx / dist) * step,
       z: enemy.position.z + (dz / dist) * step,
     };
   }
 
-  // Tick slow timer
   if (enemy.slowTimer > 0) {
     enemy.slowTimer = Math.max(0, enemy.slowTimer - delta);
   }
@@ -89,10 +97,7 @@ function moveEnemy(enemy: EnemyInstance, delta: number): boolean {
   return false;
 }
 
-function findTarget(
-  tower: TowerInstance,
-  enemies: EnemyInstance[]
-): EnemyInstance | null {
+function findTarget(tower: TowerInstance, enemies: EnemyInstance[]): EnemyInstance | null {
   const def = TOWER_DEFS[tower.defId];
   let best: EnemyInstance | null = null;
   let bestProgress = -1;
@@ -102,7 +107,6 @@ function findTarget(
     const dist = distance(tower.position, enemy.position);
     if (dist > def.range) continue;
 
-    // "First" targeting: pick enemy furthest along path
     const progress = enemy.waypointIndex * 10000 - dist;
     if (progress > bestProgress) {
       bestProgress = progress;
@@ -116,9 +120,9 @@ function findTarget(
 function moveProjectile(
   proj: ProjectileInstance,
   enemies: EnemyInstance[],
-  delta: number
+  delta: number,
 ): 'hit' | 'miss' | 'moving' {
-  const target = enemies.find((e) => e.id === proj.targetEnemyId);
+  const target = enemies.find((enemy) => enemy.id === proj.targetEnemyId);
   if (!target || target.hp <= 0) return 'miss';
 
   const dx = target.position.x - proj.position.x;
@@ -138,65 +142,85 @@ function moveProjectile(
   return 'moving';
 }
 
-// ── Store ──────────────────────────────────────────────────────────────
+function startPreparedWave(set: StoreSetter, state: GameStore, wave: ResolvedWave) {
+  set({
+    phase: 'playing',
+    currentWave: wave,
+    spawnStates: createSpawnStates(wave),
+    gameTime: 0,
+    towers: resetTowersForWave(state.towers),
+  });
+}
+
+function transitionToLevelStart(
+  set: StoreSetter,
+  campaign: ResolvedCampaign,
+  levelIndex: number,
+  waveIndex = 0,
+) {
+  const runtime = getLevelRuntimeState(campaign, levelIndex, waveIndex);
+  set({
+    phase: runtime.currentLevel.autoStartWaves ? 'playing' : 'between-waves',
+    campaign,
+    levelIndex: runtime.levelIndex,
+    waveIndex: runtime.waveIndex,
+    currentLevel: runtime.currentLevel,
+    currentWave: runtime.currentWave,
+    availableTowerIds: runtime.availableTowerIds,
+    money: runtime.startingMoney,
+    lives: runtime.startingLives,
+    gameTime: 0,
+    towers: [],
+    enemies: [],
+    projectiles: [],
+    selectedTowerDef: runtime.startingSelectedTower,
+    spawnStates: runtime.currentLevel.autoStartWaves ? createSpawnStates(runtime.currentWave) : [],
+  });
+}
+
+const initialRuntime = getLevelRuntimeState(CAMPAIGN, 0, 0);
+
 export const useGameStore = create<GameStore>((set, get) => ({
   phase: 'menu',
-  money: STARTING_MONEY,
-  lives: STARTING_LIVES,
-  wave: 0,
+  campaign: CAMPAIGN,
+  levelIndex: 0,
+  waveIndex: 0,
+  currentLevel: initialRuntime.currentLevel,
+  currentWave: initialRuntime.currentWave,
+  availableTowerIds: initialRuntime.availableTowerIds,
+  money: initialRuntime.startingMoney,
+  lives: initialRuntime.startingLives,
   gameTime: 0,
   towers: [],
   enemies: [],
   projectiles: [],
-  selectedTowerDef: null,
+  selectedTowerDef: initialRuntime.startingSelectedTower,
   spawnStates: [],
 
   startGame: () => {
     _nextId = 0;
-    set({
-      phase: 'between-waves',
-      money: STARTING_MONEY,
-      lives: STARTING_LIVES,
-      wave: 0,
-      gameTime: 0,
-      towers: [],
-      enemies: [],
-      projectiles: [],
-      selectedTowerDef: 'scratchingPost',
-      spawnStates: [],
-    });
+    transitionToLevelStart(set, CAMPAIGN, 0, 0);
   },
 
   startWave: () => {
-    const { wave } = get();
-    if (wave >= WAVES.length) {
-      set({ phase: 'victory' });
-      return;
-    }
-
-    const waveConfig = WAVES[wave];
-    const spawnStates: SpawnState[] = waveConfig.entries.map(() => ({
-      entryIndex: 0,
-      spawned: 0,
-      timer: 0,
-    }));
-
-    set({ phase: 'playing', spawnStates, gameTime: 0 });
+    const state = get();
+    if (!state.currentWave || !state.currentLevel) return;
+    startPreparedWave(set, state, state.currentWave);
   },
 
   placeTower: (defId: string, position: Vec2) => {
     const state = get();
     const def = TOWER_DEFS[defId];
     if (!def) return false;
+    if (!state.availableTowerIds.includes(defId)) return false;
     if (state.money < def.cost) return false;
     if (state.phase !== 'playing' && state.phase !== 'between-waves') return false;
 
-    // Check spacing from other towers
-    for (const t of state.towers) {
-      if (distance(position, t.position) < MIN_TOWER_SPACING) return false;
+    for (const tower of state.towers) {
+      if (distance(position, tower.position) < MIN_TOWER_SPACING) return false;
     }
 
-    const tower: TowerInstance = {
+    const newTower: TowerInstance = {
       id: uid(),
       defId,
       position: { x: position.x, z: position.z },
@@ -205,7 +229,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     };
 
     set({
-      towers: [...state.towers, tower],
+      towers: [...state.towers, newTower],
       money: state.money - def.cost,
     });
 
@@ -213,78 +237,58 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   selectTowerDef: (defId: string | null) => {
+    const state = get();
+    if (defId !== null && !state.availableTowerIds.includes(defId)) return;
     set({ selectedTowerDef: defId });
   },
 
   tick: (delta: number) => {
     const state = get();
-    if (state.phase !== 'playing') return;
+    if (state.phase !== 'playing' || !state.currentLevel || !state.currentWave) return;
 
     const gameTime = state.gameTime + delta;
-    const waveConfig = WAVES[state.wave];
-    if (!waveConfig) return;
-
-    // Clone mutable state
     let lives = state.lives;
     let money = state.money;
-    const enemies = state.enemies.map((e) => ({ ...e, position: { ...e.position } }));
-    const projectiles = state.projectiles.map((p) => ({ ...p, position: { ...p.position } }));
-    const towers = state.towers.map((t) => ({ ...t }));
-    const newSpawnStates = state.spawnStates.map((s) => ({ ...s }));
+    const enemies: EnemyInstance[] = state.enemies.map((enemy) => ({
+      ...enemy,
+      position: { ...enemy.position },
+      tags: enemy.tags ? [...enemy.tags] : undefined,
+    }));
+    const projectiles = state.projectiles.map((proj) => ({ ...proj, position: { ...proj.position } }));
+    const towers = state.towers.map((tower) => ({ ...tower }));
+    const newSpawnStates = state.spawnStates.map((spawnState) => ({ ...spawnState }));
 
-    // ── 1. Spawn enemies ──────────────────────────────────────────
-    for (let i = 0; i < waveConfig.entries.length; i++) {
-      const entry = waveConfig.entries[i];
-      const ss = newSpawnStates[i];
-      if (ss.spawned >= entry.count) continue;
+    for (let i = 0; i < state.currentWave.groups.length; i++) {
+      const group = state.currentWave.groups[i];
+      const spawnState = newSpawnStates[i];
+      if (!spawnState || spawnState.spawned >= group.count) continue;
 
-      ss.timer += delta;
+      spawnState.timer += delta;
 
-      if (ss.timer >= entry.startDelay) {
-        const elapsed = ss.timer - entry.startDelay;
-        const shouldHaveSpawned = Math.min(
-          entry.count,
-          Math.floor(elapsed / entry.spawnInterval) + 1
-        );
+      if (spawnState.timer >= group.startDelay) {
+        const elapsed = spawnState.timer - group.startDelay;
+        const shouldHaveSpawned = Math.min(group.count, Math.floor(elapsed / group.spawnInterval) + 1);
 
-        while (ss.spawned < shouldHaveSpawned) {
-          const path = ALL_PATHS[entry.pathIndex];
-          if (!path || path.length === 0) { ss.spawned++; continue; }
-
-          const enemyDef = ENEMY_DEFS[entry.enemyDefId];
-          if (!enemyDef) { ss.spawned++; continue; }
-
-          enemies.push({
-            id: uid(),
-            defId: entry.enemyDefId,
-            hp: enemyDef.maxHp,
-            maxHp: enemyDef.maxHp,
-            pathIndex: entry.pathIndex,
-            waypointIndex: 1,
-            position: { x: path[0].x, z: path[0].z },
-            slowTimer: 0,
-          });
-
-          ss.spawned++;
+        while (spawnState.spawned < shouldHaveSpawned) {
+          const enemy = createEnemyFromGroup(group, uid());
+          if (enemy) {
+            enemies.push(enemy);
+          }
+          spawnState.spawned++;
         }
       }
     }
 
-    // ── 2. Move enemies ───────────────────────────────────────────
     const reachedEnd = new Set<string>();
     for (const enemy of enemies) {
       if (enemy.hp <= 0) continue;
-      const reached = moveEnemy(enemy, delta);
-      if (reached) {
+      if (moveEnemy(enemy, delta)) {
         reachedEnd.add(enemy.id);
         lives--;
       }
     }
 
-    // ── 3. Tower targeting & firing ───────────────────────────────
-    const aliveEnemies = enemies.filter(
-      (e) => e.hp > 0 && !reachedEnd.has(e.id)
-    );
+    const aliveEnemies = enemies.filter((enemy) => enemy.hp > 0 && !reachedEnd.has(enemy.id));
 
     for (const tower of towers) {
       const def = TOWER_DEFS[tower.defId];
@@ -296,6 +300,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         projectiles.push({
           id: uid(),
           towerId: tower.id,
+          towerDefId: tower.defId,
           targetEnemyId: target.id,
           position: { x: tower.position.x, z: tower.position.z },
           damage: def.damage,
@@ -305,7 +310,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
-    // ── 4. Move projectiles & handle hits ─────────────────────────
     const projectilesToRemove = new Set<string>();
     for (const proj of projectiles) {
       const result = moveProjectile(proj, aliveEnemies, delta);
@@ -315,7 +319,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       } else if (result === 'hit') {
         projectilesToRemove.add(proj.id);
 
-        const target = aliveEnemies.find((e) => e.id === proj.targetEnemyId);
+        const target = aliveEnemies.find((enemy) => enemy.id === proj.targetEnemyId);
         if (target) {
           target.hp -= proj.damage;
 
@@ -335,48 +339,93 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
 
-    // ── 5. Remove dead enemies & grant rewards ────────────────────
     const survivingEnemies: EnemyInstance[] = [];
     for (const enemy of enemies) {
       if (reachedEnd.has(enemy.id)) continue;
       if (enemy.hp <= 0) {
-        money += ENEMY_DEFS[enemy.defId].reward;
+        money += enemy.reward;
       } else {
         survivingEnemies.push(enemy);
       }
     }
 
-    const survivingProjectiles = projectiles.filter(
-      (p) => !projectilesToRemove.has(p.id)
-    );
+    const survivingProjectiles = projectiles.filter((proj) => !projectilesToRemove.has(proj.id));
 
-    // ── 6. Check phase transitions ────────────────────────────────
-    const allSpawned = newSpawnStates.every(
-      (ss, i) => ss.spawned >= waveConfig.entries[i].count
-    );
+    const allSpawned = newSpawnStates.every((spawnState, index) => spawnState.spawned >= state.currentWave!.groups[index].count);
     const waveComplete = allSpawned && survivingEnemies.length === 0;
 
-    let newPhase: GamePhase = 'playing';
-    let newWave = state.wave;
-
     if (lives <= 0) {
-      newPhase = 'gameover';
-      lives = 0;
-    } else if (waveComplete) {
-      newWave = state.wave + 1;
-      newPhase = newWave >= WAVES.length ? 'victory' : 'between-waves';
+      set({
+        gameTime,
+        enemies: survivingEnemies,
+        projectiles: survivingProjectiles,
+        towers,
+        money,
+        lives: 0,
+        spawnStates: newSpawnStates,
+        phase: 'gameover',
+      });
+      return;
     }
 
+    if (!waveComplete) {
+      set({
+        gameTime,
+        enemies: survivingEnemies,
+        projectiles: survivingProjectiles,
+        towers,
+        money,
+        lives,
+        spawnStates: newSpawnStates,
+      });
+      return;
+    }
+
+    const next = advanceCampaignProgress(state.campaign, state.levelIndex, state.waveIndex);
+    const levelChanged = next.levelIndex !== state.levelIndex;
+
+    if (next.phase === 'victory' || !next.currentLevel || !next.currentWave) {
+      set({
+        gameTime,
+        enemies: [],
+        projectiles: [],
+        towers,
+        money: money + state.currentWave.completionBonus,
+        lives,
+        spawnStates: [],
+        phase: 'victory',
+        levelIndex: state.levelIndex,
+        waveIndex: state.waveIndex,
+        currentLevel: state.currentLevel,
+        currentWave: state.currentWave,
+      });
+      return;
+    }
+
+    if (levelChanged) {
+      transitionToLevelStart(set, state.campaign, next.levelIndex, next.waveIndex);
+      return;
+    }
+
+    const nextPhase = next.currentLevel.autoStartWaves ? 'playing' : 'between-waves';
     set({
-      gameTime,
-      enemies: survivingEnemies,
-      projectiles: survivingProjectiles,
-      towers,
-      money,
+      gameTime: next.currentLevel.autoStartWaves ? 0 : gameTime,
+      enemies: [],
+      projectiles: [],
+      towers: next.currentLevel.autoStartWaves ? resetTowersForWave(towers) : towers,
+      money: money + state.currentWave.completionBonus,
       lives,
-      spawnStates: newSpawnStates,
-      phase: newPhase,
-      wave: newWave,
+      spawnStates: next.currentLevel.autoStartWaves ? createSpawnStates(next.currentWave) : [],
+      phase: nextPhase,
+      levelIndex: next.levelIndex,
+      waveIndex: next.waveIndex,
+      currentLevel: next.currentLevel,
+      currentWave: next.currentWave,
+      availableTowerIds: next.availableTowerIds,
+      selectedTowerDef:
+        state.selectedTowerDef && next.availableTowerIds.includes(state.selectedTowerDef)
+          ? state.selectedTowerDef
+          : next.currentLevel.startingSelectedTower,
     });
   },
 }));

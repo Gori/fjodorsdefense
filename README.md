@@ -1,4 +1,4 @@
-# Fjodor's Defence 🐈🛡️
+# Fjodor's Defense 🐈🛡️
 
 Small tower defense game.  
 Set on Södermalm, Stockholm.  
@@ -6,7 +6,7 @@ Cats, geometry, incoming problems.
 
 ## What It Is
 
-`Fjodor's Defence` is a browser game built with Next.js, React Three Fiber, Rapier, and Zustand.
+`Fjodor's Defense` is a browser game built with Next.js, React Three Fiber, Rapier, and Zustand.
 
 You place towers, stop waves, and try not to look surprised when the map starts fighting back.
 

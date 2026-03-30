@@ -215,6 +215,7 @@ function EnemyUnit({
     maxHp: number;
     waypointIndex: number;
     pathIndex: number;
+    sizeMultiplier?: number;
   };
 }) {
   const def = ENEMY_DEFS[enemy.defId];
@@ -229,7 +230,7 @@ function EnemyUnit({
   const MeshComponent = ENEMY_MESHES[enemy.defId];
 
   // Bigger enemies so they're visible at zoom level
-  const scale = (enemy.defId === 'dog' ? 5.0 : enemy.defId === 'pigeon' ? 4.0 : 3.5) * 0.4;
+  const scale = (enemy.defId === 'dog' ? 5.0 : enemy.defId === 'pigeon' ? 4.0 : 3.5) * 0.4 * (enemy.sizeMultiplier ?? 1);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;

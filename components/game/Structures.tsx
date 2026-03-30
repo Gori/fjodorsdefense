@@ -4,6 +4,7 @@ import { useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getElevation } from '@/lib/elevation';
+import { getFootprintBaseElevation } from '@/lib/mapUtils';
 
 interface Structure {
   type: string;
@@ -82,11 +83,7 @@ export function StructureMeshes() {
           const geo = new THREE.ExtrudeGeometry(shape, { depth: s.height, bevelEnabled: false });
           geo.rotateX(-Math.PI / 2);
 
-          let minElev = Infinity;
-          for (const [x, z] of s.coords) {
-            const e = getElevation(x, z);
-            if (e < minElev) minElev = e;
-          }
+          const minElev = getFootprintBaseElevation(s.coords);
           geo.translate(0, minElev, 0);
 
           if (s.type === 'church') churches.push(geo);

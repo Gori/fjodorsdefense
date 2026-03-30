@@ -94,7 +94,7 @@ export function useFlattenMaterial(opts: {
     enemyCountRef.current.value = activeCount;
   });
 
-  const onBeforeCompile = useMemo(() => (shader: THREE.WebGLProgramParameters) => {
+  const onBeforeCompile = useMemo(() => (shader: THREE.WebGLProgramParametersWithUniforms) => {
     shader.uniforms.uEnemyData = uniforms.uEnemyData;
     shader.uniforms.uEnemyCount = uniforms.uEnemyCount;
     shader.uniforms.uFlattenRadius = uniforms.uFlattenRadius;

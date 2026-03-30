@@ -3,11 +3,9 @@
 import { Canvas, useFrame } from '@react-three/fiber';
 import { MapControls } from '@react-three/drei';
 import { Map } from './Map';
-import { PathRenderer } from './PathRenderer';
 import { Towers } from './Tower';
 import { Enemies } from './Enemy';
 import { Projectiles } from './Projectile';
-import { TreeMeshes } from './Trees';
 import { ParticleEffects } from './Particles';
 import { useGameStore } from '@/lib/store';
 import * as THREE from 'three';
@@ -22,7 +20,7 @@ function GameLoop() {
 
 const CENTER = new THREE.Vector3(-10, 0, 10);
 
-export function GameCanvas() {
+export function GameCanvas({ onRevealChange }: { onRevealChange?: (isRevealed: boolean) => void }) {
   return (
     <Canvas
       camera={{
@@ -64,9 +62,7 @@ export function GameCanvas() {
       <directionalLight position={[-25, 35, -25]} intensity={0.3} color="#88aadd" />
       <hemisphereLight args={['#99bbdd', '#554433', 0.35]} />
 
-      <Map />
-      <TreeMeshes />
-      <PathRenderer />
+      <Map onRevealChange={onRevealChange} />
       <Towers />
       <Enemies />
       <ParticleEffects />

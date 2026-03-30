@@ -38,15 +38,20 @@ export interface EnemyInstance {
   defId: string;
   hp: number;
   maxHp: number;
+  speed: number;
+  reward: number;
   pathIndex: number;
   waypointIndex: number;
   position: Vec2;
   slowTimer: number;
+  sizeMultiplier?: number;
+  tags?: string[];
 }
 
 export interface ProjectileInstance {
   id: string;
   towerId: string;
+  towerDefId: string;
   targetEnemyId: string;
   position: Vec2;
   damage: number;
@@ -54,20 +59,21 @@ export interface ProjectileInstance {
   special?: 'slow' | 'aoe';
 }
 
-export interface WaveEntry {
-  enemyDefId: string;
+export interface SpawnGroup {
+  enemyId: string;
   count: number;
   pathIndex: number;
   spawnInterval: number;
   startDelay: number;
-}
-
-export interface WaveConfig {
-  entries: WaveEntry[];
+  hpMultiplier: number;
+  speedMultiplier: number;
+  rewardMultiplier: number;
+  sizeMultiplier: number;
+  tags: string[];
 }
 
 export interface SpawnState {
-  entryIndex: number;
+  groupIndex: number;
   spawned: number;
   timer: number;
 }

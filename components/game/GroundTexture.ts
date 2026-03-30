@@ -53,34 +53,34 @@ function drawRoad(ctx: CanvasRenderingContext2D, coords: [number, number][], wid
 }
 
 const ZONE_COLORS: Record<string, string> = {
-  park: '#3a6a2a',
-  grass: '#4a7a35',
-  forest: '#2a5520',
-  scrub: '#3a6028',
-  allotments: '#4a6a3a',
-  cemetery: '#2a4a28',
-  playground: '#8a7a5a',
-  pitch: '#4a8a3a',
-  rock: '#7a7570',
-  beach: '#c8b888',
-  residential: '#606060',
-  commercial: '#585858',
-  railway: '#4a4540',
-  construction: '#7a7060',
+  park: '#2a8520',
+  grass: '#359228',
+  forest: '#1a5010',
+  scrub: '#257018',
+  allotments: '#328a28',
+  cemetery: '#1c5815',
+  playground: '#5a9228',
+  pitch: '#2a9022',
+  rock: '#4a7038',
+  beach: '#8a9a48',
+  residential: '#4a6a35',
+  commercial: '#3a5a28',
+  railway: '#2a4020',
+  construction: '#588028',
 };
 
 const SURFACE_COLORS: Record<string, string> = {
-  artificial_turf: '#3a8a30',
-  grass: '#3a7a2a',
-  asphalt: '#505050',
-  concrete: '#606060',
-  gravel: '#8a8070',
-  fine_gravel: '#8a8070',
-  sand: '#c8b888',
-  rubber: '#6a4a3a',
-  tartan: '#8a4a3a',
-  paving_stones: '#707068',
-  plastic: '#3a8a30',
+  artificial_turf: '#2a9020',
+  grass: '#2a8520',
+  asphalt: '#4a6238',
+  concrete: '#5a7048',
+  gravel: '#687a48',
+  fine_gravel: '#687a48',
+  sand: '#8a9a48',
+  rubber: '#3a5820',
+  tartan: '#5a7028',
+  paving_stones: '#4a6238',
+  plastic: '#2a9020',
 };
 
 export function createGroundTexture(
@@ -96,7 +96,7 @@ export function createGroundTexture(
   // 1. Paint per-pixel: water blue where elevation=0, green where land
   const imgData = ctx.createImageData(TEX_SIZE, TEX_SIZE);
   const waterRGB = [26, 48, 96]; // #1a3060
-  const landRGB = [80, 100, 60]; // muted green-gray base for all land
+  const landRGB = [52, 80, 38]; // #345026 — deep lush green
 
   for (let py = 0; py < TEX_SIZE; py++) {
     for (let px = 0; px < TEX_SIZE; px++) {
@@ -122,7 +122,7 @@ export function createGroundTexture(
 
   // 3. Parks from main data
   for (const park of mapData.parks) {
-    fillPolygon(ctx, park.coords, '#3a6a2a');
+    fillPolygon(ctx, park.coords, '#2a8520');
   }
 
   // 4. Sports pitches
@@ -136,21 +136,21 @@ export function createGroundTexture(
   for (const road of mapData.roads) {
     if (road.importance <= 1) {
       const w = road.width * 0.8;
-      drawRoad(ctx, road.coords, w, '#555555');
+      drawRoad(ctx, road.coords, w, '#586a45');
     }
   }
   // Major roads (wider, lighter)
   for (const road of mapData.roads) {
     if (road.importance >= 2) {
       const w = road.width * 1.2;
-      drawRoad(ctx, road.coords, w, '#6a6a6a');
+      drawRoad(ctx, road.coords, w, '#687a52');
     }
   }
 
   // 6. Building footprints (subtle dark outline)
   for (const building of mapData.buildings) {
     if (building.coords.length >= 3) {
-      fillPolygon(ctx, building.coords, '#484848');
+      fillPolygon(ctx, building.coords, '#2a3a1e');
     }
   }
 

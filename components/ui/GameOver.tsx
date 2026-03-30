@@ -1,20 +1,30 @@
 'use client';
 
 import { useGameStore } from '@/lib/store';
-import { WAVES } from '@/lib/waves';
+import { getTotalCampaignWaveCount, getWaveNumberInCampaign } from '@/lib/levels/runtime';
+
+const F = 'var(--font-game)';
 
 export function GameOverScreen() {
+  const campaign = useGameStore((s) => s.campaign);
   const phase = useGameStore((s) => s.phase);
-  const wave = useGameStore((s) => s.wave);
+  const levelIndex = useGameStore((s) => s.levelIndex);
+  const waveIndex = useGameStore((s) => s.waveIndex);
+  const currentLevel = useGameStore((s) => s.currentLevel);
   const towers = useGameStore((s) => s.towers);
   const startGame = useGameStore((s) => s.startGame);
   const isVictory = phase === 'victory';
+  const totalWaves = getTotalCampaignWaveCount(campaign);
+  const campaignWave = getWaveNumberInCampaign(campaign, levelIndex, waveIndex);
+  const stopClickThrough = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
   const accent = isVictory ? '#2ED573' : '#FF4757';
 
   return (
     <div
       className="absolute inset-0 z-20 flex flex-col items-center justify-center anim-fadeIn"
+      onPointerDown={stopClickThrough}
+      onClick={stopClickThrough}
       style={{ background: 'rgba(0,0,0,0.9)' }}
     >
       {/* Icon */}
@@ -32,7 +42,7 @@ export function GameOverScreen() {
         )}
       </div>
 
-      {/* Title */}
+      {/* Title — display font */}
       <h1
         className="anim-slideUp d2 text-center uppercase"
         style={{
@@ -50,47 +60,47 @@ export function GameOverScreen() {
         className="anim-fadeIn d3"
         style={{
           marginTop: 24,
-          fontFamily: 'var(--font-body)',
+          fontFamily: F,
           fontSize: 20,
-          fontWeight: 400,
+          fontWeight: 500,
           color: '#ccc',
         }}
-      >
+        >
         {isVictory
           ? 'Fjodor held the line. The island is safe.'
-          : `Overrun at wave ${wave + 1} of ${WAVES.length}.`}
+          : `Overrun on ${currentLevel?.name ?? 'the current level'}, wave ${waveIndex + 1}.`}
       </p>
 
       {/* Stats */}
       <div
         className="anim-fadeIn d4 flex items-center"
         style={{
-          gap: 56,
+          gap: 48,
           marginTop: 48,
-          padding: '32px 56px',
+          padding: '28px 48px',
           background: 'rgba(255,255,255,0.05)',
           border: '2px solid rgba(255,255,255,0.1)',
-          borderRadius: 20,
+          borderRadius: 8,
         }}
       >
-        <div className="flex flex-col items-center" style={{ gap: 8 }}>
+        <div className="flex flex-col items-center" style={{ gap: 6 }}>
           <span
             style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 56,
+              fontFamily: F,
+              fontSize: 52,
               fontWeight: 700,
               lineHeight: 1,
               color: '#fff',
             }}
           >
-            {wave}
+            {isVictory ? totalWaves : Math.max(0, campaignWave - 1)}
           </span>
           <span
             style={{
-              fontFamily: 'var(--font-mono)',
+              fontFamily: F,
               fontSize: 14,
-              fontWeight: 500,
-              letterSpacing: '0.15em',
+              fontWeight: 600,
+              letterSpacing: '0.1em',
               color: '#aaa',
               textTransform: 'uppercase',
             }}
@@ -101,11 +111,11 @@ export function GameOverScreen() {
 
         <div style={{ width: 2, height: 60, background: 'rgba(255,255,255,0.1)' }} />
 
-        <div className="flex flex-col items-center" style={{ gap: 8 }}>
+        <div className="flex flex-col items-center" style={{ gap: 6 }}>
           <span
             style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 56,
+              fontFamily: F,
+              fontSize: 52,
               fontWeight: 700,
               lineHeight: 1,
               color: '#fff',
@@ -115,10 +125,10 @@ export function GameOverScreen() {
           </span>
           <span
             style={{
-              fontFamily: 'var(--font-mono)',
+              fontFamily: F,
               fontSize: 14,
-              fontWeight: 500,
-              letterSpacing: '0.15em',
+              fontWeight: 600,
+              letterSpacing: '0.1em',
               color: '#aaa',
               textTransform: 'uppercase',
             }}
@@ -130,19 +140,23 @@ export function GameOverScreen() {
 
       {/* Replay */}
       <button
-        onClick={startGame}
+        onPointerDown={stopClickThrough}
+        onClick={(e) => {
+          e.stopPropagation();
+          startGame();
+        }}
         className="anim-scaleIn d5 uppercase cursor-pointer"
         style={{
           marginTop: 48,
-          padding: '22px 72px',
-          fontSize: 18,
-          fontWeight: 500,
-          fontFamily: 'var(--font-mono)',
-          letterSpacing: '0.2em',
+          padding: '18px 64px',
+          fontSize: 22,
+          fontWeight: 700,
+          fontFamily: F,
+          letterSpacing: '0.12em',
           color: '#111',
           background: accent,
           border: 'none',
-          borderRadius: 14,
+          borderRadius: 6,
           transition: 'transform 0.15s, box-shadow 0.15s',
         }}
         onMouseEnter={(e) => {

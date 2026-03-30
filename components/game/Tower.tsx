@@ -5,8 +5,8 @@ import { TOWER_DEFS } from '@/lib/towerDefs';
 import { getElevation } from '@/lib/elevation';
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { MeshBasicMaterial, MeshStandardMaterial } from 'three';
-import type { Group, Mesh } from 'three';
+import { Mesh, MeshBasicMaterial, MeshStandardMaterial } from 'three';
+import type { Group } from 'three';
 
 const TOWER_SCALE = 0.45;
 

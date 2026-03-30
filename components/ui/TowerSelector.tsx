@@ -4,14 +4,17 @@ import { useGameStore } from '@/lib/store';
 import { TOWER_DEFS } from '@/lib/towerDefs';
 import { useEffect, useCallback, useState } from 'react';
 
-const TOWER_LIST = Object.values(TOWER_DEFS);
-
 const TOWER_DESCS: Record<string, string> = {
   scratchingPost: 'Fast attack',
   yarnLauncher: 'Slows enemies',
-  laserPointer: 'Heavy hit, long range',
+  laserPointer: 'Long range sniper',
   catnipBomb: 'Area damage',
 };
+
+const F = 'var(--font-game)';
+const S = '2px 2px 0 rgba(0,0,0,1), 4px 4px 0 rgba(0,0,0,0.7)';
+const GOLD_S = '2px 2px 0 rgba(0,0,0,1), 4px 4px 0 rgba(255,214,102,0.35)';
+const DANGER_S = '2px 2px 0 rgba(0,0,0,1), 4px 4px 0 rgba(255,71,87,0.35)';
 
 function TowerIcon({ id, size = 44 }: { id: string; size?: number }) {
   const s = size;
@@ -65,7 +68,12 @@ export function TowerSelector() {
   const selectedTowerDef = useGameStore((s) => s.selectedTowerDef);
   const selectTowerDef = useGameStore((s) => s.selectTowerDef);
   const money = useGameStore((s) => s.money);
+  const availableTowerIds = useGameStore((s) => s.availableTowerIds);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const towerList = availableTowerIds
+    .map((towerId) => TOWER_DEFS[towerId])
+    .filter((def): def is (typeof TOWER_DEFS)[keyof typeof TOWER_DEFS] => Boolean(def));
+  const stopClickThrough = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
@@ -74,13 +82,13 @@ export function TowerSelector() {
         return;
       }
       const idx = parseInt(e.key) - 1;
-      if (idx >= 0 && idx < TOWER_LIST.length) {
-        const def = TOWER_LIST[idx];
+      if (idx >= 0 && idx < towerList.length) {
+        const def = towerList[idx];
         if (money >= def.cost)
           selectTowerDef(selectedTowerDef === def.id ? null : def.id);
       }
     },
-    [money, selectTowerDef, selectedTowerDef],
+    [money, selectTowerDef, selectedTowerDef, towerList],
   );
 
   useEffect(() => {
@@ -90,32 +98,26 @@ export function TowerSelector() {
 
   return (
     <div
-      className="absolute z-10 pointer-events-none anim-slideUp"
+      className="absolute z-10 pointer-events-none anim-fadeIn d4"
+      onPointerDown={stopClickThrough}
+      onClick={stopClickThrough}
       style={{
-        bottom: 24,
+        bottom: 20,
         left: 0,
         right: 0,
         display: 'flex',
         justifyContent: 'center',
       }}
     >
-      <div
-        className="pointer-events-auto flex items-end"
-        style={{
-          gap: 6,
-          background: 'rgba(0,0,0,0.85)',
-          borderRadius: 16,
-          padding: 8,
-        }}
-      >
-        {TOWER_LIST.map((def, i) => {
+      <div className="pointer-events-auto flex items-end" style={{ gap: 10 }}>
+        {towerList.map((def, i) => {
           const canAfford = money >= def.cost;
           const isSelected = selectedTowerDef === def.id;
           const isHovered = hoveredId === def.id;
 
           return (
             <div key={def.id} style={{ position: 'relative' }}>
-              {/* Hover tooltip */}
+              {/* ─── Tooltip ─── */}
               {isHovered && canAfford && (
                 <div
                   className="anim-fadeIn"
@@ -124,42 +126,19 @@ export function TowerSelector() {
                     bottom: '100%',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    marginBottom: 8,
-                    background: 'rgba(10,14,17,0.92)',
-                    backdropFilter: 'blur(12px)',
-                    WebkitBackdropFilter: 'blur(12px)',
-                    borderRadius: 10,
-                    padding: '10px 14px',
-                    border: `1px solid ${def.color}40`,
+                    marginBottom: 10,
                     whiteSpace: 'nowrap',
                     pointerEvents: 'none',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 4,
                   }}
                 >
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-body)',
-                      fontSize: 14,
-                      fontWeight: 400,
-                      color: '#ccc',
-                    }}
-                  >
+                  <span style={{ fontFamily: F, fontSize: 16, fontWeight: 700, color: '#fff', textShadow: S }}>
                     {TOWER_DESCS[def.id]}
                   </span>
-                  <div
-                    className="flex items-center"
-                    style={{
-                      gap: 8,
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: '#999',
-                      textTransform: 'uppercase',
-                    }}
-                  >
+                  <div className="flex items-center" style={{ gap: 10, fontFamily: F, fontSize: 13, fontWeight: 600, color: '#D0D0D0', textShadow: S }}>
                     <span>DMG {def.damage}</span>
                     <span>·</span>
                     <span>RNG {def.range}</span>
@@ -167,79 +146,105 @@ export function TowerSelector() {
                 </div>
               )}
 
+              {/* ─── Tower button ─── */}
               <button
-                onClick={() =>
-                  canAfford && selectTowerDef(isSelected ? null : def.id)
-                }
+                onPointerDown={stopClickThrough}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (canAfford) selectTowerDef(isSelected ? null : def.id);
+                }}
                 disabled={!canAfford}
                 className={canAfford ? 'cursor-pointer' : 'cursor-not-allowed'}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 4,
-                  padding: '10px 16px 8px',
-                  background: isSelected
-                    ? `${def.color}28`
-                    : 'rgba(255,255,255,0.05)',
-                  border: isSelected
-                    ? `1.5px solid ${def.color}`
-                    : '1.5px solid transparent',
-                  borderRadius: 12,
-                  opacity: canAfford ? 1 : 0.35,
+                  gap: 5,
+                  padding: '10px 18px 10px',
+                  minWidth: 90,
+                  borderWidth: 2,
+                  borderStyle: 'solid',
                   transition: 'all 0.15s',
                   position: 'relative',
-                  ...(isSelected
-                    ? { boxShadow: `0 0 16px ${def.color}30` }
-                    : {}),
+
+                  // ── 3-STATE VISUAL ──
+                  ...(isSelected ? {
+                    // SELECTED: tower color glow, tinted bg, thick border
+                    background: `${def.color}25`,
+                    borderColor: def.color,
+                    boxShadow: `4px 4px 0 ${def.color}55, inset -2px -2px 0 ${def.color}20`,
+                    transform: 'scale(1.05)',
+                  } : canAfford ? {
+                    // AFFORDABLE: clean, inviting, subtle border
+                    background: 'rgba(10,14,17,0.9)',
+                    borderColor: isHovered ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)',
+                    boxShadow: '4px 4px 0 rgba(0,0,0,0.5)',
+                    transform: isHovered ? 'scale(1.04)' : 'scale(1)',
+                  } : {
+                    // CAN'T AFFORD: dimmed, locked feel
+                    background: 'rgba(8,10,14,0.85)',
+                    borderColor: 'rgba(255,255,255,0.06)',
+                    boxShadow: 'none',
+                    transform: 'scale(1)',
+                    opacity: 0.5,
+                  }),
                 }}
-                onMouseEnter={() => {
-                  setHoveredId(def.id);
-                }}
-                onMouseLeave={() => {
-                  setHoveredId(null);
-                }}
+                onMouseEnter={() => setHoveredId(def.id)}
+                onMouseLeave={() => setHoveredId(null)}
               >
-                {/* Key badge — inline top-right */}
+                {/* Key badge */}
                 <div
                   style={{
                     position: 'absolute',
-                    top: 6,
-                    right: 8,
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: isSelected ? def.color : '#666',
+                    top: 5,
+                    right: 7,
+                    fontFamily: F,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: isSelected ? def.color : canAfford ? '#9A9A9A' : '#5A5A5A',
                     lineHeight: 1,
+                    textShadow: S,
                   }}
                 >
                   {i + 1}
                 </div>
 
-                <TowerIcon id={def.id} size={32} />
+                {/* Icon */}
+                <div style={{
+                  filter: canAfford
+                    ? 'drop-shadow(2px 2px 0 rgba(0,0,0,0.95)) drop-shadow(4px 4px 0 rgba(0,0,0,0.7))'
+                    : 'drop-shadow(2px 2px 0 rgba(0,0,0,0.95)) grayscale(0.8) brightness(0.5)',
+                }}>
+                  <TowerIcon id={def.id} size={34} />
+                </div>
 
+                {/* Name */}
                 <span
                   style={{
-                    fontFamily: 'var(--font-body)',
+                    fontFamily: F,
                     fontSize: 13,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     lineHeight: 1.1,
-                    color: isSelected ? '#fff' : '#ccc',
+                    color: isSelected ? '#FFFFFF' : canAfford ? '#E0E0E0' : '#7A7A7A',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
                     textAlign: 'center',
+                    textShadow: S,
                   }}
                 >
                   {def.name}
                 </span>
 
+                {/* Price — gold if affordable, RED if can't afford */}
                 <span
                   style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 17,
+                    fontFamily: F,
+                    fontSize: 18,
                     fontWeight: 700,
                     lineHeight: 1,
-                    color: canAfford ? '#FFD666' : '#666',
+                    color: canAfford ? '#FFD666' : '#FF4757',
+                    textShadow: canAfford
+                      ? GOLD_S
+                      : DANGER_S,
                   }}
                 >
                   ${def.cost}
