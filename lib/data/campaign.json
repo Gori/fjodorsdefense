@@ -4,325 +4,861 @@
     "id": "sodermalm-campaign",
     "name": "Fjodor's Defense"
   },
+  "worlds": [
+    {
+      "id": "streets-remember",
+      "name": "The Streets Remember",
+      "subtitle": "Britt-Inger's warnings start to sound less like folklore.",
+      "description": "Fjodor and Folke begin where the city still feels familiar, but routes, sounds, and shadows are already shifting.",
+      "accent": "#ffd666",
+      "mapTint": "#10233b",
+      "storyIntro": "Soder still looks like home. It just no longer behaves like it.",
+      "storyOutro": "By the end of the first world, Fjodor knows the island is answering to an older story."
+    },
+    {
+      "id": "hidden-routes",
+      "name": "The Hidden Routes",
+      "subtitle": "The brothers start reading the city the way Britt-Inger did.",
+      "description": "Birds cut strange patterns overhead, old markings return, and Fjodor's languages help him hear what the streets are trying to say.",
+      "accent": "#6fe8ff",
+      "mapTint": "#0a2631",
+      "storyIntro": "What looked like noise becomes direction. What sounded like rumor becomes instruction.",
+      "storyOutro": "By the end of the second world, dragon signs are no longer abstract. They are tactical."
+    },
+    {
+      "id": "ember-under-soder",
+      "name": "The Ember Under Soder",
+      "subtitle": "Dragons stop hiding in stories and start shaping the night.",
+      "description": "Ash, heat, and fear twist the same island into something mythic. Fjodor and Folke finally see the shape under the city.",
+      "accent": "#ff8a5b",
+      "mapTint": "#2b1717",
+      "storyIntro": "Britt-Inger was never warning Fjodor about make-believe. She was warning him about timing.",
+      "storyOutro": "The campaign ends with the brothers holding a city that now remembers them too."
+    }
+  ],
   "paths": [
-    { "id": "main", "pathIndex": 0 }
+    { "id": "main", "pathIndex": 0 },
+    { "id": "north", "pathIndex": 1 },
+    { "id": "south", "pathIndex": 2 }
   ],
   "defaults": {
     "startingMoney": 150,
     "startingLives": 20,
-    "waveCompletionBonus": 40,
+    "waveCompletionBonus": 45,
     "autoStartWaves": false,
-    "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb"],
+    "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle", "tunaMortar", "magnetCollar"],
     "startingSelectedTower": "scratchingPost",
     "defaultPathId": "main"
   },
   "spawnTemplates": {
-    "rats_intro": {
-      "enemyId": "rat",
-      "count": 6,
-      "spawnInterval": 1.2
-    },
-    "rats_rush": {
-      "enemyId": "rat",
-      "count": 10,
-      "spawnInterval": 0.9
-    },
-    "pigeon_scouts": {
-      "enemyId": "pigeon",
-      "count": 4,
-      "spawnInterval": 1.4,
-      "startDelay": 2
-    },
-    "dog_patrol": {
-      "enemyId": "dog",
-      "count": 3,
-      "spawnInterval": 2.5,
-      "startDelay": 4
-    }
+    "rats_intro": { "enemyId": "rat", "count": 8, "spawnInterval": 1.15 },
+    "rats_rush": { "enemyId": "rat", "count": 14, "spawnInterval": 0.72 },
+    "rats_flood": { "enemyId": "rat", "count": 20, "spawnInterval": 0.48 },
+    "pigeon_scouts": { "enemyId": "pigeon", "count": 5, "spawnInterval": 1.25, "startDelay": 1.5 },
+    "pigeon_flock": { "enemyId": "pigeon", "count": 9, "spawnInterval": 0.95, "startDelay": 0.75 },
+    "dog_patrol": { "enemyId": "dog", "count": 4, "spawnInterval": 2.4, "startDelay": 3 },
+    "dog_column": { "enemyId": "dog", "count": 6, "spawnInterval": 1.9, "startDelay": 2.5 },
+    "seagull_screen": { "enemyId": "seagull", "count": 6, "spawnInterval": 0.95, "startDelay": 0.5 },
+    "boar_push": { "enemyId": "boar", "count": 4, "spawnInterval": 2.8, "startDelay": 2 },
+    "fox_patrol": { "enemyId": "fox", "count": 3, "spawnInterval": 2.1, "startDelay": 1.5 }
   },
   "levels": [
     {
       "id": "old-town-roads",
+      "worldId": "streets-remember",
+      "activePathIds": ["main"],
       "name": "Old Town Roads",
-      "description": "The original onboarding stretch. Rats first, then wings, then trouble.",
+      "description": "Starter routes through calm blocks.",
+      "briefing": "Fjodor starts with simple posts and yarn while Folke insists the streets are listening. Britt-Inger used to say old roads wake up before people do.",
+      "storyTitle": "The First Murmur",
+      "storyBody": "Natasha calls after the brothers to stay where the lamps still work. Fjodor repeats Britt-Inger's warning under his breath and pretends it is only a game.",
+      "memoryLines": ["Britt-Inger: Roads remember feet before feet remember roads.", "Folke: Hear that? The corners are talking first."],
+      "familyFocus": ["Britt-Inger", "Natasha"],
+      "dragonForeshadow": "Nothing dragon-shaped appears yet, only the sense that heat has passed through the streets before.",
+      "atmosphere": "Warm windows, long shadows, and the first feeling that the city is paying attention.",
+      "codexUnlocks": ["Britt-Inger's first warning", "Fjodor's notebook: listening streets"],
+      "restrictedZones": [
+        { "xMin": -16, "xMax": -10, "zMin": 6, "zMax": 13, "label": "courtyard wall" }
+      ],
       "availableTowers": ["scratchingPost", "yarnLauncher"],
+      "startingSelectedTower": "scratchingPost",
       "waves": [
         {
           "id": "wave-1",
-          "name": "Simple Intro",
+          "name": "Street Sweep",
           "groups": [
-            { "template": "rats_intro" }
+            { "template": "rats_intro", "count": 8 }
           ]
         },
         {
           "id": "wave-2",
-          "name": "More Rats",
+          "name": "Narrow Alley",
           "groups": [
-            { "template": "rats_rush", "spawnInterval": 1.0 }
+            { "template": "rats_intro", "count": 10, "spawnInterval": 1.0 }
           ]
         },
         {
           "id": "wave-3",
-          "name": "Rats and Pigeons",
+          "name": "Chewed Wires",
           "groups": [
-            { "template": "rats_rush", "count": 8, "spawnInterval": 0.8, "startDelay": 0 },
-            { "template": "pigeon_scouts", "count": 4, "spawnInterval": 1.5, "startDelay": 3 }
+            { "template": "rats_rush", "count": 12, "spawnInterval": 0.78 }
           ]
         },
         {
           "id": "wave-4",
-          "name": "Mixed Pressure",
+          "name": "Basement Rattle",
+          "completionBonus": 55,
           "groups": [
-            { "template": "rats_rush", "spawnInterval": 0.7, "count": 10 },
-            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 1.2 }
-          ]
-        },
-        {
-          "id": "wave-5",
-          "name": "The Big One",
-          "groups": [
-            { "template": "rats_rush", "count": 12, "spawnInterval": 0.5 },
-            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 1.0, "startDelay": 1 },
-            { "template": "dog_patrol" }
+            { "template": "rats_rush", "count": 14, "spawnInterval": 0.68 },
+            { "template": "rats_intro", "count": 6, "spawnInterval": 1.1, "startDelay": 4 }
           ]
         }
       ]
     },
     {
       "id": "roofline-flurry",
+      "worldId": "streets-remember",
+      "activePathIds": ["main", "north"],
       "name": "Roofline Flurry",
-      "description": "Earlier fliers and tighter spacing. The laser pointer comes online.",
-      "startingMoney": 175,
+      "description": "The skies open and rooftops stop being safe.",
+      "briefing": "Pigeons start cutting across the rooftops in deliberate lines. Oskar once laughed at how Fjodor switched from Swedish to Russian when he got nervous; now Fjodor hears himself doing it again.",
+      "storyTitle": "Names Above The Chimneys",
+      "storyBody": "The birds move like they already know the route. Fjodor starts naming landmarks in two languages, as if saying them twice might pin them in place.",
+      "memoryLines": ["Oskar: If you know two names for a thing, you hold it a little tighter.", "Fjodor: Krovli. Rooftops. Stay where I can see you, Folke."],
+      "familyFocus": ["Oskar"],
+      "dragonForeshadow": "The skyline glows for a moment like something enormous has breathed behind it.",
+      "atmosphere": "Cold wind over chimneys, bright antenna lights, restless wings.",
+      "codexUnlocks": ["Double naming", "The roofline glow"],
+      "restrictedZones": [
+        { "xMin": -7, "xMax": -1, "zMin": 21, "zMax": 27, "label": "roofline drop" }
+      ],
+      "startingMoney": 185,
       "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer"],
+      "startingSelectedTower": "laserPointer",
+      "newEnemyIds": ["pigeon"],
+      "newTowerIds": ["laserPointer"],
       "waves": [
         {
           "id": "wave-1",
-          "name": "Fast Entry",
+          "name": "First Shadow",
           "groups": [
-            { "template": "rats_rush", "count": 12, "spawnInterval": 0.75 },
-            { "template": "pigeon_scouts", "count": 3, "startDelay": 1.5 }
+            { "template": "rats_rush", "count": 12, "spawnInterval": 0.8 },
+            { "template": "pigeon_scouts", "count": 3, "startDelay": 2, "pathId": "north" }
           ]
         },
         {
           "id": "wave-2",
-          "name": "Crosswind",
+          "name": "Antenna Pass",
           "groups": [
-            { "template": "pigeon_scouts", "count": 8, "spawnInterval": 1.0, "startDelay": 0.5 },
-            { "template": "rats_rush", "count": 10, "spawnInterval": 0.85, "startDelay": 1.5 }
+            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 1.05, "startDelay": 0.5 },
+            { "template": "rats_intro", "count": 8, "spawnInterval": 0.95, "startDelay": 1.5 }
           ]
         },
         {
           "id": "wave-3",
-          "name": "Thin the Line",
+          "name": "Torn Tarps",
           "groups": [
-            { "template": "rats_rush", "count": 14, "spawnInterval": 0.65 },
-            { "template": "dog_patrol", "count": 2, "startDelay": 5 }
+            { "template": "rats_rush", "count": 14, "spawnInterval": 0.7 },
+            { "template": "pigeon_flock", "count": 7, "spawnInterval": 1.0, "startDelay": 2, "pathId": "north" }
           ]
         },
         {
           "id": "wave-4",
-          "name": "Pinned Down",
+          "name": "Roofline Break",
           "completionBonus": 60,
           "groups": [
-            { "template": "pigeon_scouts", "count": 10, "spawnInterval": 0.9, "startDelay": 0 },
-            { "template": "rats_rush", "count": 12, "spawnInterval": 0.6, "startDelay": 1 },
-            { "template": "dog_patrol", "count": 3, "startDelay": 3.5 }
+            { "template": "pigeon_flock", "count": 9, "spawnInterval": 0.9, "startDelay": 0.25, "pathId": "north" },
+            { "template": "rats_rush", "count": 12, "spawnInterval": 0.62, "startDelay": 1.5 }
           ]
         }
       ]
     },
     {
       "id": "hound-mile",
+      "worldId": "streets-remember",
+      "activePathIds": ["main", "south"],
       "name": "Hound Mile",
-      "description": "Slower brutes with reinforced health pools force sharper tower coverage.",
-      "startingMoney": 220,
-      "startingLives": 24,
+      "description": "Bruisers force the defense to stay efficient.",
+      "briefing": "The dogs do not charge like strays. They move like they have been sent. Amanda's steady voice is the one Fjodor hears when he forces himself to keep placing towers instead of staring.",
+      "storyTitle": "Hold The Line",
+      "storyBody": "Folke gives the dogs new names before they arrive. Fjodor keeps the practical ones. Between them, fear becomes pattern.",
+      "memoryLines": ["Amanda: If you can name what scares you, you can place around it.", "Folke: That one is not a dog. That one is a warning with teeth."],
+      "familyFocus": ["Amanda"],
+      "dragonForeshadow": "The dogs flinch at pockets of heat in the road no one else can see.",
+      "atmosphere": "Low growls, wet stone, pressure building block by block.",
+      "codexUnlocks": ["Amanda's rule for fear", "Heat stains on the lane"],
+      "restrictedZones": [
+        { "xMin": -13, "xMax": -8, "zMin": -4, "zMax": 2, "label": "collapsed kiosk" }
+      ],
+      "startingMoney": 225,
+      "startingLives": 22,
       "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb"],
+      "startingSelectedTower": "catnipBomb",
+      "newEnemyIds": ["dog"],
+      "newTowerIds": ["catnipBomb"],
       "waves": [
         {
           "id": "wave-1",
-          "name": "Heavy Paws",
+          "name": "Leash Snap",
           "groups": [
-            {
-              "template": "dog_patrol",
-              "count": 4,
-              "startDelay": 1,
-              "modifiers": {
-                "hpMultiplier": 1.25,
-                "rewardMultiplier": 1.15
-              }
-            },
-            { "template": "rats_rush", "count": 8, "spawnInterval": 0.7, "startDelay": 0 }
+            { "template": "dog_patrol", "count": 3, "startDelay": 1, "pathId": "south" },
+            { "template": "rats_intro", "count": 8, "spawnInterval": 0.9, "startDelay": 0 }
           ]
         },
         {
           "id": "wave-2",
-          "name": "Loose Formation",
+          "name": "Barking Echo",
           "groups": [
-            {
-              "template": "dog_patrol",
-              "count": 5,
-              "spawnInterval": 2.2,
-              "startDelay": 2,
-              "modifiers": {
-                "hpMultiplier": 1.35,
-                "speedMultiplier": 0.95,
-                "rewardMultiplier": 1.25
-              }
-            },
-            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 1.1, "startDelay": 0.5 }
+            { "template": "dog_patrol", "count": 4, "spawnInterval": 2.2, "startDelay": 1.5, "pathId": "south" },
+            { "template": "pigeon_scouts", "count": 5, "spawnInterval": 1.1, "startDelay": 0.5 }
           ]
         },
         {
           "id": "wave-3",
+          "name": "Trash Yard",
+          "groups": [
+            { "template": "rats_flood", "count": 18, "spawnInterval": 0.58 },
+            { "template": "dog_patrol", "count": 4, "startDelay": 3, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-4",
           "name": "Bite Radius",
           "groups": [
-            {
-              "template": "dog_patrol",
-              "count": 6,
-              "spawnInterval": 2.0,
-              "modifiers": {
-                "hpMultiplier": 1.4,
-                "speedMultiplier": 0.92,
-                "rewardMultiplier": 1.3,
-                "sizeMultiplier": 1.1,
-                "tags": ["armored"]
-              }
-            },
-            { "template": "rats_rush", "count": 16, "spawnInterval": 0.55, "startDelay": 1 }
+            { "template": "dog_column", "count": 5, "spawnInterval": 2.0, "pathId": "south", "modifiers": { "hpMultiplier": 1.15, "rewardMultiplier": 1.1 } },
+            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 1.0, "startDelay": 1.5 }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Pound Gate",
+          "completionBonus": 70,
+          "groups": [
+            { "template": "rats_rush", "count": 16, "spawnInterval": 0.6 },
+            { "template": "dog_column", "count": 5, "spawnInterval": 1.8, "startDelay": 2.5, "pathId": "south", "modifiers": { "hpMultiplier": 1.2, "speedMultiplier": 0.95, "rewardMultiplier": 1.15 } }
           ]
         }
       ]
     },
     {
-      "id": "district-lockdown",
-      "name": "District Lockdown",
-      "description": "Longer waves, tighter rewards, and no easy tower choices.",
-      "startingMoney": 200,
-      "waveCompletionBonus": 55,
-      "availableTowers": ["scratchingPost", "laserPointer", "catnipBomb"],
-      "startingSelectedTower": "laserPointer",
+      "id": "market-shuffle",
+      "worldId": "streets-remember",
+      "activePathIds": ["main", "north", "south"],
+      "name": "Market Shuffle",
+      "description": "Crowd control turns into economy control.",
+      "briefing": "The market route should feel ordinary, but nothing about the noise is ordinary anymore. Britt-Inger once said dragons prefer places where people stop noticing what has changed.",
+      "storyTitle": "What Crowds Hide",
+      "storyBody": "Fjodor sees movement in stalls before the packs emerge. Folke points at the cobbles and says the stones are warm like someone kept a fire underneath them.",
+      "memoryLines": ["Britt-Inger: Busy places hide old things best.", "Folke: The ground feels like it swallowed sparks."],
+      "familyFocus": ["Britt-Inger"],
+      "dragonForeshadow": "The market is the first place where the buried ember theme is unmistakable.",
+      "atmosphere": "Lantern gold, crowd ghost-noise, and heat trapped under stone.",
+      "codexUnlocks": ["Market ember marks", "Britt-Inger on crowded places"],
+      "restrictedZones": [
+        { "xMin": -24, "xMax": -18, "zMin": -8, "zMax": -2, "label": "market barricade" },
+        { "xMin": -6, "xMax": 1, "zMin": 24, "zMax": 29, "label": "crate stack" }
+      ],
+      "startingMoney": 235,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser"],
+      "startingSelectedTower": "treatDispenser",
+      "newTowerIds": ["treatDispenser"],
       "waves": [
         {
           "id": "wave-1",
-          "name": "Sightlines",
+          "name": "Fruit Stall",
           "groups": [
-            { "template": "rats_rush", "count": 18, "spawnInterval": 0.6 },
-            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 1.0, "startDelay": 1 }
+            { "template": "rats_flood", "count": 18, "spawnInterval": 0.52, "pathId": "main" },
+            { "template": "dog_patrol", "count": 3, "startDelay": 4, "pathId": "south" }
           ]
         },
         {
           "id": "wave-2",
-          "name": "Compression",
+          "name": "Dropped Crates",
           "groups": [
-            { "template": "rats_rush", "count": 20, "spawnInterval": 0.5 },
-            {
-              "template": "dog_patrol",
-              "count": 5,
-              "spawnInterval": 1.8,
-              "startDelay": 2.5,
-              "modifiers": {
-                "hpMultiplier": 1.45,
-                "rewardMultiplier": 1.35
-              }
-            }
+            { "template": "rats_rush", "count": 14, "spawnInterval": 0.62, "pathId": "main" },
+            { "template": "pigeon_flock", "count": 8, "spawnInterval": 0.95, "startDelay": 1, "pathId": "north" },
+            { "template": "rats_intro", "count": 8, "spawnInterval": 1.0, "startDelay": 5, "pathId": "south" }
           ]
         },
         {
           "id": "wave-3",
-          "name": "Noisy Skies",
+          "name": "Open Bags",
           "groups": [
-            { "template": "pigeon_scouts", "count": 12, "spawnInterval": 0.8, "startDelay": 0 },
-            { "template": "rats_rush", "count": 12, "spawnInterval": 0.55, "startDelay": 1 },
-            {
-              "template": "dog_patrol",
-              "count": 4,
-              "startDelay": 5,
-              "modifiers": {
-                "hpMultiplier": 1.5,
-                "speedMultiplier": 1.05,
-                "rewardMultiplier": 1.4
-              }
-            }
+            { "template": "rats_flood", "count": 22, "spawnInterval": 0.46, "pathId": "main", "modifiers": { "rewardMultiplier": 0.95 } },
+            { "template": "dog_patrol", "count": 4, "startDelay": 3, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Market Panic",
+          "groups": [
+            { "template": "pigeon_flock", "count": 10, "spawnInterval": 0.88, "startDelay": 0.5, "pathId": "north" },
+            { "template": "rats_flood", "count": 18, "spawnInterval": 0.5, "startDelay": 1.2, "pathId": "main" },
+            { "template": "dog_patrol", "count": 3, "startDelay": 4.5, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Closing Bell",
+          "completionBonus": 75,
+          "groups": [
+            { "template": "rats_flood", "count": 24, "spawnInterval": 0.44, "pathId": "main" },
+            { "template": "rats_rush", "count": 16, "spawnInterval": 0.58, "startDelay": 4, "pathId": "north" },
+            { "template": "dog_column", "count": 4, "spawnInterval": 1.9, "startDelay": 7, "pathId": "south" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "harbor-theft",
+      "worldId": "hidden-routes",
+      "activePathIds": ["main", "north"],
+      "name": "Harbor Theft",
+      "description": "New flyers cut across the defense before ground lines settle.",
+      "briefing": "At the harbor, Fjodor starts hearing the city in fragments: Swedish in the wind, Russian in remembered lullabies from Natasha, and something older under both.",
+      "storyTitle": "Salt, Iron, And Translation",
+      "storyBody": "Natasha used to smooth Fjodor's hair and translate fear into smaller pieces. At the water, he tries doing that for Folke while gulls tear the sky into routes.",
+      "memoryLines": ["Natasha: If you understand the words, breathe once. If you don't, breathe twice.", "Fjodor: Sol. Salt. Don't run ahead."],
+      "familyFocus": ["Natasha"],
+      "dragonForeshadow": "The harbor winds carry soot that does not belong to any chimney nearby.",
+      "atmosphere": "Salt spray, metal echoes, pale wings, and wrong soot.",
+      "codexUnlocks": ["Natasha's breathing rule", "Harbor soot report"],
+      "startingMoney": 250,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser"],
+      "startingSelectedTower": "laserPointer",
+      "newEnemyIds": ["seagull"],
+      "waves": [
+        {
+          "id": "wave-1",
+          "name": "Pier Sweep",
+          "groups": [
+            { "template": "seagull_screen", "count": 4, "spawnInterval": 1.0, "startDelay": 0.5, "pathId": "north" },
+            { "template": "rats_rush", "count": 14, "spawnInterval": 0.7, "startDelay": 1.5, "pathId": "main" }
+          ]
+        },
+        {
+          "id": "wave-2",
+          "name": "Salt Wind",
+          "groups": [
+            { "template": "pigeon_flock", "count": 8, "spawnInterval": 0.9, "startDelay": 0.4, "pathId": "main" },
+            { "template": "seagull_screen", "count": 5, "spawnInterval": 0.88, "startDelay": 2.4, "pathId": "north" }
+          ]
+        },
+        {
+          "id": "wave-3",
+          "name": "Fish Crate Riot",
+          "groups": [
+            { "template": "rats_flood", "count": 22, "spawnInterval": 0.45, "pathId": "main" },
+            { "template": "seagull_screen", "count": 6, "spawnInterval": 0.82, "startDelay": 1.8, "pathId": "north" },
+            { "template": "dog_patrol", "count": 4, "startDelay": 5, "pathId": "main" }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Harbor Crossfire",
+          "groups": [
+            { "template": "seagull_screen", "count": 7, "spawnInterval": 0.8, "startDelay": 0.25, "pathId": "north" },
+            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 0.95, "startDelay": 2.2, "pathId": "main" },
+            { "template": "rats_rush", "count": 16, "spawnInterval": 0.55, "startDelay": 1, "pathId": "main" }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Dock Sirens",
+          "completionBonus": 80,
+          "groups": [
+            { "template": "seagull_screen", "count": 8, "spawnInterval": 0.76, "startDelay": 0.2, "pathId": "north", "modifiers": { "rewardMultiplier": 1.05 } },
+            { "template": "rats_flood", "count": 18, "spawnInterval": 0.48, "startDelay": 1.25, "pathId": "main" },
+            { "template": "dog_column", "count": 4, "spawnInterval": 1.8, "startDelay": 4.5, "pathId": "main" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "signal-heights",
+      "worldId": "hidden-routes",
+      "activePathIds": ["north", "south"],
+      "name": "Signal Heights",
+      "description": "The answer to air pressure finally shows up.",
+      "briefing": "High above the route, old signal points start lining up with phrases Fjodor only half remembers. The bird whistle is less a weapon than a way of answering back.",
+      "storyTitle": "Answering The Air",
+      "storyBody": "Folke thinks the poles are listening posts. Fjodor reads a painted mark, first in Swedish, then in Russian, and realizes both mean almost the same thing: awake.",
+      "memoryLines": ["Fjodor: Vaken. Awake. Same word, same warning.", "Folke: Then whistle back so they know we heard."],
+      "familyFocus": ["Fjodor", "Folke"],
+      "dragonForeshadow": "Whatever is waking the heights prefers messages, repeats, and heat shimmer.",
+      "atmosphere": "Updrafts, static hum, tower lights, and messages in the air.",
+      "codexUnlocks": ["Signal mark: awake", "Folke's listening posts"],
+      "startingMoney": 275,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle"],
+      "startingSelectedTower": "birdWhistle",
+      "newTowerIds": ["birdWhistle"],
+      "waves": [
+        {
+          "id": "wave-1",
+          "name": "Signal Test",
+          "groups": [
+            { "template": "seagull_screen", "count": 5, "spawnInterval": 0.9, "startDelay": 0.3, "pathId": "north" },
+            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 1.0, "startDelay": 1.5, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-2",
+          "name": "Updraft",
+          "groups": [
+            { "template": "seagull_screen", "count": 7, "spawnInterval": 0.82, "startDelay": 0.25, "pathId": "north" },
+            { "template": "rats_rush", "count": 14, "spawnInterval": 0.6, "startDelay": 2, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-3",
+          "name": "Relay Break",
+          "groups": [
+            { "template": "pigeon_flock", "count": 10, "spawnInterval": 0.82, "startDelay": 0, "pathId": "south" },
+            { "template": "seagull_screen", "count": 6, "spawnInterval": 0.85, "startDelay": 1.4, "pathId": "north" },
+            { "template": "dog_patrol", "count": 4, "startDelay": 4, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Static Bloom",
+          "groups": [
+            { "template": "rats_flood", "count": 20, "spawnInterval": 0.45, "pathId": "south" },
+            { "template": "seagull_screen", "count": 7, "spawnInterval": 0.78, "startDelay": 1.2, "pathId": "north" },
+            { "template": "pigeon_flock", "count": 8, "spawnInterval": 0.86, "startDelay": 3.8, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Beacon Pulse",
+          "completionBonus": 90,
+          "groups": [
+            { "template": "seagull_screen", "count": 8, "spawnInterval": 0.72, "startDelay": 0.2, "pathId": "north", "modifiers": { "hpMultiplier": 1.1 } },
+            { "template": "pigeon_flock", "count": 10, "spawnInterval": 0.8, "startDelay": 1.4, "pathId": "south" },
+            { "template": "dog_column", "count": 4, "spawnInterval": 1.75, "startDelay": 4.5, "pathId": "north" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stone-run",
+      "worldId": "hidden-routes",
+      "activePathIds": ["main", "south"],
+      "name": "Stone Run",
+      "description": "Armor arrives and invalidates lazy damage spread.",
+      "briefing": "The heavier enemies arrive where the roadbed has cracked into long dark seams. Britt-Inger's dragon stories stop sounding symbolic once stone starts holding heat after midnight.",
+      "storyTitle": "Under The Pavement",
+      "storyBody": "Fjodor stops calling the cracks normal. Folke kneels near one and says something big is breathing below the blocks, slowly enough that adults forgot to hear it.",
+      "memoryLines": ["Britt-Inger: Stone remembers fire longer than flesh does.", "Folke: It's not sleeping. It's waiting."],
+      "familyFocus": ["Britt-Inger", "Folke"],
+      "dragonForeshadow": "This is the first level where dragon presence becomes an operational assumption, not just a fear.",
+      "atmosphere": "Split pavement, trapped warmth, heavy footfalls, and a sense of underground pressure.",
+      "codexUnlocks": ["Stone remembers fire", "The waiting thing below"],
+      "startingMoney": 290,
+      "startingLives": 21,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle"],
+      "startingSelectedTower": "catnipBomb",
+      "newEnemyIds": ["boar"],
+      "waves": [
+        {
+          "id": "wave-1",
+          "name": "Stone Dust",
+          "groups": [
+            { "template": "boar_push", "count": 3, "spawnInterval": 3.0, "startDelay": 1.5, "pathId": "south" },
+            { "template": "rats_rush", "count": 12, "spawnInterval": 0.65, "startDelay": 0.5, "pathId": "main" }
+          ]
+        },
+        {
+          "id": "wave-2",
+          "name": "Weight Test",
+          "groups": [
+            { "template": "boar_push", "count": 4, "spawnInterval": 2.6, "startDelay": 1.2, "pathId": "south" },
+            { "template": "pigeon_scouts", "count": 5, "spawnInterval": 1.0, "startDelay": 2.5, "pathId": "main" }
+          ]
+        },
+        {
+          "id": "wave-3",
+          "name": "Cracked Pavement",
+          "groups": [
+            { "template": "boar_push", "count": 4, "spawnInterval": 2.4, "startDelay": 1.4, "pathId": "south", "modifiers": { "hpMultiplier": 1.08 } },
+            { "template": "rats_flood", "count": 18, "spawnInterval": 0.48, "startDelay": 0.25, "pathId": "main" },
+            { "template": "seagull_screen", "count": 5, "spawnInterval": 0.85, "startDelay": 3.5, "pathId": "main" }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Brute Turn",
+          "groups": [
+            { "template": "boar_push", "count": 5, "spawnInterval": 2.2, "startDelay": 1.0, "pathId": "south" },
+            { "template": "dog_patrol", "count": 4, "startDelay": 3.2, "pathId": "main" },
+            { "template": "rats_rush", "count": 16, "spawnInterval": 0.56, "startDelay": 1.8, "pathId": "main" }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Stonewall",
+          "completionBonus": 95,
+          "groups": [
+            { "template": "boar_push", "count": 5, "spawnInterval": 2.15, "startDelay": 0.9, "pathId": "south", "modifiers": { "hpMultiplier": 1.12, "rewardMultiplier": 1.1 } },
+            { "template": "seagull_screen", "count": 6, "spawnInterval": 0.8, "startDelay": 2.25, "pathId": "main" },
+            { "template": "rats_flood", "count": 20, "spawnInterval": 0.44, "startDelay": 3.75, "pathId": "main" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tunnel-static",
+      "worldId": "ember-under-soder",
+      "activePathIds": ["main", "north", "south"],
+      "name": "Tunnel Static",
+      "description": "The proper anti-armor answer arrives, and the waves thicken around it.",
+      "briefing": "Below the street grid, the tunnels hum like a throat holding back speech. Oskar used to say old cities are built in layers; Fjodor finally understands that some layers are alive.",
+      "storyTitle": "Layers Below",
+      "storyBody": "The tunnel walls answer impact with a metallic after-ring. Folke insists the sound is not echo but reply.",
+      "memoryLines": ["Oskar: Cities stack their past instead of throwing it away.", "Folke: Then something old is talking through the pipes."],
+      "familyFocus": ["Oskar", "Folke"],
+      "dragonForeshadow": "The ember under Soder is close enough now to distort sound and timing.",
+      "atmosphere": "Track-rattle, pressure pipes, dim sodium light, and buried heat.",
+      "codexUnlocks": ["Oskar on city layers", "Tunnel reply log"],
+      "startingMoney": 320,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle", "tunaMortar"],
+      "startingSelectedTower": "tunaMortar",
+      "newTowerIds": ["tunaMortar"],
+      "waves": [
+        {
+          "id": "wave-1",
+          "name": "Tunnel Mouth",
+          "groups": [
+            { "template": "boar_push", "count": 4, "spawnInterval": 2.6, "startDelay": 1.2 },
+            { "template": "rats_flood", "count": 20, "spawnInterval": 0.46, "startDelay": 0.25 }
+          ]
+        },
+        {
+          "id": "wave-2",
+          "name": "Metal Echo",
+          "groups": [
+            { "template": "boar_push", "count": 4, "spawnInterval": 2.4, "startDelay": 1.2, "modifiers": { "hpMultiplier": 1.1 } },
+            { "template": "dog_column", "count": 4, "spawnInterval": 1.9, "startDelay": 3 },
+            { "template": "pigeon_flock", "count": 7, "spawnInterval": 0.88, "startDelay": 2 }
+          ]
+        },
+        {
+          "id": "wave-3",
+          "name": "Rattling Track",
+          "groups": [
+            { "template": "rats_flood", "count": 24, "spawnInterval": 0.42 },
+            { "template": "boar_push", "count": 5, "spawnInterval": 2.2, "startDelay": 2.2 },
+            { "template": "seagull_screen", "count": 6, "spawnInterval": 0.8, "startDelay": 4.4 }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Pressure Pipes",
+          "groups": [
+            { "template": "boar_push", "count": 5, "spawnInterval": 2.1, "startDelay": 0.8, "modifiers": { "hpMultiplier": 1.15 } },
+            { "template": "dog_column", "count": 5, "spawnInterval": 1.8, "startDelay": 2.6 },
+            { "template": "pigeon_flock", "count": 8, "spawnInterval": 0.82, "startDelay": 1.5 }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Third Rail",
+          "completionBonus": 105,
+          "groups": [
+            { "template": "boar_push", "count": 6, "spawnInterval": 2.0, "startDelay": 0.75, "modifiers": { "hpMultiplier": 1.18, "rewardMultiplier": 1.1 } },
+            { "template": "rats_flood", "count": 22, "spawnInterval": 0.4, "startDelay": 1.5 },
+            { "template": "seagull_screen", "count": 6, "spawnInterval": 0.78, "startDelay": 3 },
+            { "template": "dog_patrol", "count": 4, "startDelay": 5.2 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "night-watch",
+      "worldId": "ember-under-soder",
+      "activePathIds": ["north", "south"],
+      "name": "Night Watch",
+      "description": "The lane tempo changes before the player is ready.",
+      "briefing": "By now the city is no longer hiding that it has moods. Amanda would call it a bad night and start making tea; Fjodor calls it a route problem because that is easier to survive.",
+      "storyTitle": "When The Night Chooses Sides",
+      "storyBody": "The foxes do not lead the rush. They conduct it. Folke laughs once, then stops when the lantern light turns ember-red along the lane.",
+      "memoryLines": ["Amanda: Sometimes calm is just the shape panic takes before speaking.", "Fjodor: Then we answer before it finishes the sentence."],
+      "familyFocus": ["Amanda", "Fjodor"],
+      "dragonForeshadow": "The night itself starts behaving like part of the enemy design.",
+      "atmosphere": "Lantern flare, tempo shifts, red-black shadows, and tactical panic.",
+      "codexUnlocks": ["Amanda on bad nights", "Red lantern event"],
+      "startingMoney": 335,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle", "tunaMortar"],
+      "startingSelectedTower": "birdWhistle",
+      "newEnemyIds": ["fox"],
+      "waves": [
+        {
+          "id": "wave-1",
+          "name": "Lantern Run",
+          "groups": [
+            { "template": "fox_patrol", "count": 2, "spawnInterval": 2.4, "startDelay": 1 },
+            { "template": "rats_flood", "count": 18, "spawnInterval": 0.46, "startDelay": 0.5 }
+          ]
+        },
+        {
+          "id": "wave-2",
+          "name": "Back Alley Relay",
+          "groups": [
+            { "template": "fox_patrol", "count": 3, "spawnInterval": 2.0, "startDelay": 0.75 },
+            { "template": "dog_column", "count": 4, "spawnInterval": 1.9, "startDelay": 2.2 },
+            { "template": "pigeon_scouts", "count": 6, "spawnInterval": 0.95, "startDelay": 1.25 }
+          ]
+        },
+        {
+          "id": "wave-3",
+          "name": "Blink and Miss",
+          "groups": [
+            { "template": "fox_patrol", "count": 3, "spawnInterval": 1.9, "startDelay": 0.5, "modifiers": { "speedMultiplier": 1.05 } },
+            { "template": "seagull_screen", "count": 6, "spawnInterval": 0.8, "startDelay": 1.2 },
+            { "template": "rats_rush", "count": 18, "spawnInterval": 0.5, "startDelay": 2.8 }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Pack Timing",
+          "groups": [
+            { "template": "fox_patrol", "count": 4, "spawnInterval": 1.8, "startDelay": 0.6 },
+            { "template": "boar_push", "count": 4, "spawnInterval": 2.2, "startDelay": 2.2 },
+            { "template": "pigeon_flock", "count": 8, "spawnInterval": 0.8, "startDelay": 1.4 }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Blackout",
+          "completionBonus": 110,
+          "groups": [
+            { "template": "fox_patrol", "count": 4, "spawnInterval": 1.7, "startDelay": 0.5, "modifiers": { "rewardMultiplier": 1.1 } },
+            { "template": "rats_flood", "count": 24, "spawnInterval": 0.4, "startDelay": 1.1 },
+            { "template": "seagull_screen", "count": 7, "spawnInterval": 0.76, "startDelay": 2.4 },
+            { "template": "boar_push", "count": 4, "spawnInterval": 2.1, "startDelay": 4.6 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ember-arcade",
+      "worldId": "ember-under-soder",
+      "activePathIds": ["main", "north", "south"],
+      "name": "Ember Arcade",
+      "description": "The city starts splitting pressure across too many fronts at once.",
+      "briefing": "The lanes stop feeling like roads and start feeling like decisions made by something older. Fjodor no longer needs convincing that the dragon-thread is tactical.",
+      "storyTitle": "Three Ways To Burn",
+      "storyBody": "Folke says the island is showing its teeth now. Fjodor believes him because the same warmth keeps surfacing on three routes that should never agree with each other.",
+      "memoryLines": ["Natasha: When panic multiplies, break it into corners.", "Fjodor: Fine. Then we hold three corners."],
+      "familyFocus": ["Natasha", "Fjodor", "Folke"],
+      "dragonForeshadow": "The dragon no longer hides below a single lane. It is shaping the whole board.",
+      "atmosphere": "Ash-light, split pressure, and too many routes glowing at once.",
+      "codexUnlocks": ["Three corners rule", "Arcade ember map"],
+      "restrictedZones": [
+        { "xMin": -20, "xMax": -14, "zMin": -10, "zMax": -4, "label": "burned tram shell" },
+        { "xMin": -3, "xMax": 4, "zMin": 16, "zMax": 21, "label": "collapsed terrace" }
+      ],
+      "startingMoney": 348,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle", "tunaMortar", "magnetCollar"],
+      "startingSelectedTower": "magnetCollar",
+      "waves": [
+        {
+          "id": "wave-1",
+          "name": "Warm Corners",
+          "groups": [
+            { "template": "rats_flood", "count": 18, "pathId": "main" },
+            { "template": "pigeon_flock", "count": 8, "startDelay": 1.2, "pathId": "north" },
+            { "template": "dog_patrol", "count": 3, "startDelay": 2.5, "pathId": "south" }
+          ]
+        },
+        {
+          "id": "wave-2",
+          "name": "Arc Light",
+          "groups": [
+            { "template": "fox_patrol", "count": 3, "pathId": "north" },
+            { "template": "boar_push", "count": 4, "pathId": "south", "startDelay": 1.4 },
+            { "template": "seagull_screen", "count": 6, "pathId": "main", "startDelay": 2.1 }
+          ]
+        },
+        {
+          "id": "wave-3",
+          "name": "Heat Divide",
+          "groups": [
+            { "template": "rats_flood", "count": 20, "pathId": "main" },
+            { "template": "fox_patrol", "count": 3, "pathId": "north", "startDelay": 0.8 },
+            { "template": "dog_column", "count": 4, "pathId": "south", "startDelay": 2.8 }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Smoke Signal",
+          "groups": [
+            { "template": "seagull_screen", "count": 7, "pathId": "north" },
+            { "template": "boar_push", "count": 4, "pathId": "main", "startDelay": 1.5 },
+            { "template": "rats_rush", "count": 18, "pathId": "south", "startDelay": 2.8 }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Open Furnace",
+          "completionBonus": 125,
+          "groups": [
+            { "template": "fox_patrol", "count": 4, "pathId": "north" },
+            { "template": "boar_push", "count": 5, "pathId": "main", "startDelay": 1.2, "modifiers": { "hpMultiplier": 1.12 } },
+            { "template": "rats_flood", "count": 24, "pathId": "south", "startDelay": 2.4 },
+            { "template": "seagull_screen", "count": 7, "pathId": "main", "startDelay": 4.5 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dragon-yard",
+      "worldId": "ember-under-soder",
+      "activePathIds": ["main", "north", "south"],
+      "name": "Dragon Yard",
+      "description": "The late campaign turns into a sustained three-lane endurance fight.",
+      "briefing": "This is the point where Britt-Inger's stories stop being a comfort and become instructions. Surviving means treating every lane like a mouth that might open wider.",
+      "storyTitle": "Instructions, Not Stories",
+      "storyBody": "Fjodor realizes Britt-Inger was never trying to make him less afraid. She was trying to make sure fear arrived with structure.",
+      "memoryLines": ["Britt-Inger: A dragon is worst when you still think it is a metaphor.", "Amanda: Then stop giving it that advantage."],
+      "familyFocus": ["Britt-Inger", "Amanda"],
+      "dragonForeshadow": "The map is no longer hinting at the dragon. It is fighting in its shape.",
+      "atmosphere": "Cinder wind, jagged timings, and a city arranged like a jaw.",
+      "codexUnlocks": ["Instructions, not stories", "Dragon yard sketch"],
+      "restrictedZones": [
+        { "xMin": -28, "xMax": -22, "zMin": -6, "zMax": 0, "label": "freight wreck" },
+        { "xMin": -10, "xMax": -4, "zMin": 18, "zMax": 24, "label": "ash vent" }
+      ],
+      "startingMoney": 356,
+      "startingLives": 20,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle", "tunaMortar", "magnetCollar"],
+      "startingSelectedTower": "magnetCollar",
+      "waves": [
+        {
+          "id": "wave-1",
+          "name": "Jawline",
+          "groups": [
+            { "template": "rats_flood", "count": 20, "pathId": "main" },
+            { "template": "dog_patrol", "count": 4, "pathId": "south", "startDelay": 1.2 },
+            { "template": "pigeon_flock", "count": 8, "pathId": "north", "startDelay": 2.2 }
+          ]
+        },
+        {
+          "id": "wave-2",
+          "name": "Clinker Step",
+          "groups": [
+            { "template": "boar_push", "count": 4, "pathId": "main" },
+            { "template": "fox_patrol", "count": 3, "pathId": "north", "startDelay": 0.7 },
+            { "template": "seagull_screen", "count": 6, "pathId": "south", "startDelay": 2.3 }
+          ]
+        },
+        {
+          "id": "wave-3",
+          "name": "Ash Breath",
+          "groups": [
+            { "template": "rats_rush", "count": 18, "pathId": "south" },
+            { "template": "dog_column", "count": 4, "pathId": "main", "startDelay": 1.8 },
+            { "template": "pigeon_flock", "count": 8, "pathId": "north", "startDelay": 3.4 }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Cinder Relay",
+          "groups": [
+            { "template": "fox_patrol", "count": 4, "pathId": "north" },
+            { "template": "rats_flood", "count": 22, "pathId": "main", "startDelay": 1.4 },
+            { "template": "boar_push", "count": 4, "pathId": "south", "startDelay": 3.5 }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Open Teeth",
+          "completionBonus": 130,
+          "groups": [
+            { "template": "seagull_screen", "count": 7, "pathId": "north" },
+            { "template": "boar_push", "count": 5, "pathId": "main", "startDelay": 1.0, "modifiers": { "hpMultiplier": 1.15 } },
+            { "template": "rats_flood", "count": 24, "pathId": "south", "startDelay": 2.2 },
+            { "template": "fox_patrol", "count": 4, "pathId": "main", "startDelay": 4.6 }
           ]
         }
       ]
     },
     {
       "id": "hornstull-last-stand",
+      "worldId": "ember-under-soder",
+      "activePathIds": ["main", "north", "south"],
       "name": "Hornstull Last Stand",
-      "description": "Final sustained push with stacked modifiers and strict tower access.",
-      "startingMoney": 260,
-      "startingLives": 18,
-      "waveCompletionBonus": 80,
-      "availableTowers": ["yarnLauncher", "laserPointer", "catnipBomb"],
-      "startingSelectedTower": "yarnLauncher",
+      "description": "The whole campaign compresses into one long exam.",
+      "briefing": "Everything Britt-Inger warned about, everything Natasha soothed, everything Oskar explained, and everything Amanda steadied finally converges at Hornstull. The dragons are not metaphors anymore.",
+      "storyTitle": "The Ember Shows Its Face",
+      "storyBody": "Fjodor stops pretending this is only defense. Folke points down the length of the route and names the shape moving under the city before anyone else can.",
+      "memoryLines": ["Britt-Inger: If the dragon wakes, do not ask whether it is real. Ask what it wants open.", "Folke: There. You can see its back in the streets."],
+      "familyFocus": ["Britt-Inger", "Oskar", "Natasha", "Amanda"],
+      "dragonForeshadow": "No more foreshadowing. This is the dragon-thread paying off in full.",
+      "atmosphere": "Bridge lights, ember glare, ash-warm wind, and the sense of a city holding its breath.",
+      "codexUnlocks": ["Britt-Inger's final warning", "Hornstull dragon sighting"],
+      "startingMoney": 360,
+      "startingLives": 19,
+      "waveCompletionBonus": 120,
+      "availableTowers": ["scratchingPost", "yarnLauncher", "laserPointer", "catnipBomb", "treatDispenser", "birdWhistle", "tunaMortar", "magnetCollar"],
+      "startingSelectedTower": "magnetCollar",
+      "newTowerIds": ["magnetCollar"],
       "waves": [
         {
           "id": "wave-1",
-          "name": "Scouts and Surge",
+          "name": "Bridge Test",
           "groups": [
-            { "template": "pigeon_scouts", "count": 10, "spawnInterval": 0.8, "startDelay": 0 },
-            { "template": "rats_rush", "count": 20, "spawnInterval": 0.5, "startDelay": 1 }
+            { "template": "fox_patrol", "count": 3, "spawnInterval": 1.9, "startDelay": 0.8 },
+            { "template": "rats_flood", "count": 20, "spawnInterval": 0.42, "startDelay": 1.2 },
+            { "template": "seagull_screen", "count": 6, "spawnInterval": 0.8, "startDelay": 2.6 }
           ]
         },
         {
           "id": "wave-2",
-          "name": "Pressure Stack",
+          "name": "Cross Current",
           "groups": [
-            {
-              "template": "rats_rush",
-              "count": 24,
-              "spawnInterval": 0.45,
-              "modifiers": {
-                "hpMultiplier": 1.15,
-                "speedMultiplier": 1.1,
-                "rewardMultiplier": 1.1
-              }
-            },
-            {
-              "template": "dog_patrol",
-              "count": 6,
-              "spawnInterval": 1.7,
-              "startDelay": 2,
-              "modifiers": {
-                "hpMultiplier": 1.6,
-                "rewardMultiplier": 1.45,
-                "sizeMultiplier": 1.15
-              }
-            }
+            { "template": "boar_push", "count": 4, "spawnInterval": 2.2, "startDelay": 0.9 },
+            { "template": "pigeon_flock", "count": 9, "spawnInterval": 0.82, "startDelay": 1.4 },
+            { "template": "dog_column", "count": 4, "spawnInterval": 1.8, "startDelay": 3.6 }
           ]
         },
         {
           "id": "wave-3",
-          "name": "Last Stand",
-          "completionBonus": 120,
+          "name": "Neon Swarm",
           "groups": [
-            { "template": "pigeon_scouts", "count": 14, "spawnInterval": 0.75, "startDelay": 0 },
-            {
-              "template": "rats_rush",
-              "count": 26,
-              "spawnInterval": 0.42,
-              "startDelay": 0.75,
-              "modifiers": {
-                "hpMultiplier": 1.2,
-                "speedMultiplier": 1.12,
-                "rewardMultiplier": 1.15
-              }
-            },
-            {
-              "template": "dog_patrol",
-              "count": 8,
-              "spawnInterval": 1.6,
-              "startDelay": 2.5,
-              "modifiers": {
-                "hpMultiplier": 1.8,
-                "speedMultiplier": 0.95,
-                "rewardMultiplier": 1.6,
-                "sizeMultiplier": 1.2,
-                "tags": ["boss-pack"]
-              }
-            }
+            { "template": "fox_patrol", "count": 4, "spawnInterval": 1.75, "startDelay": 0.4 },
+            { "template": "rats_flood", "count": 26, "spawnInterval": 0.38, "startDelay": 0.9 },
+            { "template": "seagull_screen", "count": 7, "spawnInterval": 0.74, "startDelay": 2.1 },
+            { "template": "pigeon_flock", "count": 8, "spawnInterval": 0.78, "startDelay": 3.2 }
+          ]
+        },
+        {
+          "id": "wave-4",
+          "name": "Stone and Feather",
+          "groups": [
+            { "template": "boar_push", "count": 5, "spawnInterval": 2.0, "startDelay": 0.8, "modifiers": { "hpMultiplier": 1.15 } },
+            { "template": "seagull_screen", "count": 8, "spawnInterval": 0.72, "startDelay": 1.4 },
+            { "template": "dog_column", "count": 5, "spawnInterval": 1.75, "startDelay": 3.4 }
+          ]
+        },
+        {
+          "id": "wave-5",
+          "name": "Clocktower Panic",
+          "groups": [
+            { "template": "fox_patrol", "count": 4, "spawnInterval": 1.65, "startDelay": 0.35, "modifiers": { "speedMultiplier": 1.05 } },
+            { "template": "boar_push", "count": 5, "spawnInterval": 1.95, "startDelay": 1.8 },
+            { "template": "rats_flood", "count": 24, "spawnInterval": 0.39, "startDelay": 2.8 },
+            { "template": "seagull_screen", "count": 7, "spawnInterval": 0.7, "startDelay": 4.1 }
+          ]
+        },
+        {
+          "id": "wave-6",
+          "name": "Last Stand",
+          "completionBonus": 150,
+          "groups": [
+            { "template": "fox_patrol", "count": 5, "spawnInterval": 1.6, "startDelay": 0.2, "modifiers": { "rewardMultiplier": 1.15 } },
+            { "template": "boar_push", "count": 6, "spawnInterval": 1.85, "startDelay": 1.3, "modifiers": { "hpMultiplier": 1.18, "rewardMultiplier": 1.1 } },
+            { "template": "rats_flood", "count": 28, "spawnInterval": 0.36, "startDelay": 2.4 },
+            { "template": "seagull_screen", "count": 8, "spawnInterval": 0.68, "startDelay": 3.5 }
           ]
         }
       ]

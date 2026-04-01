@@ -1,5 +1,6 @@
 import { ALL_PATHS } from '../pathData';
 import { ENEMY_DEFS } from '../enemyDefs';
+import type { EnemyTrait } from '../types';
 import type { EnemyInstance } from '../types';
 import type { ResolvedSpawnGroup } from '../levels/types';
 
@@ -11,6 +12,13 @@ export function createEnemyFromGroup(group: ResolvedSpawnGroup, id: string): Ene
   if (!enemyDef) return null;
 
   const maxHp = Math.max(1, Math.round(enemyDef.maxHp * group.hpMultiplier));
+  const traits = [...new Set<EnemyTrait>([
+    ...(enemyDef.traits ?? []),
+    ...(enemyDef.flying ? (['flying'] as EnemyTrait[]) : []),
+    ...(group.tags.includes('armored') ? (['armored'] as EnemyTrait[]) : []),
+  ])];
+  const armor = Math.max(0, enemyDef.armor ?? (traits.includes('armored') ? 2 : 0));
+  const baseShield = Math.max(0, enemyDef.shield ?? 0);
 
   return {
     id,
@@ -23,7 +31,16 @@ export function createEnemyFromGroup(group: ResolvedSpawnGroup, id: string): Ene
     waypointIndex: 1,
     position: { x: path[0].x, z: path[0].z },
     slowTimer: 0,
+    slowFactor: 1,
     sizeMultiplier: group.sizeMultiplier,
     tags: [...group.tags],
+    traits,
+    armor,
+    shield: baseShield,
+    auraRadius: enemyDef.auraRadius,
+    auraSpeedMultiplier: enemyDef.auraSpeedMultiplier,
+    speedBonus: 1,
+    armorBonus: 0,
+    hazardBoosted: false,
   };
 }

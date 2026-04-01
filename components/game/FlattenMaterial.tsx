@@ -2,7 +2,7 @@
 
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useGameStore } from '@/lib/store';
+import { useRuntimeSnapshot } from '@/lib/runtime';
 import * as THREE from 'three';
 import { getElevation } from '@/lib/elevation';
 
@@ -39,7 +39,7 @@ export function useFlattenMaterial(opts: {
   side?: THREE.Side;
 }) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
-  const enemies = useGameStore((s) => s.enemies);
+  const { enemies } = useRuntimeSnapshot();
   const elevTex = useMemo(() => createElevationTexture(), []);
 
   // Track smoothed intensity per enemy slot — ramps up on appear, down on disappear

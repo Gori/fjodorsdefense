@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState, useLayoutEffect } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useGameStore } from '@/lib/store';
@@ -9,6 +9,7 @@ import {
   computeBlockedCells,
   getFootprintBaseElevation,
   getTerrainSurfaceY,
+  pointInPolygon,
 } from '@/lib/mapUtils';
 import { ALL_PATHS } from '@/lib/pathData';
 import { TOWER_DEFS } from '@/lib/towerDefs';
@@ -19,6 +20,9 @@ import { getElevation } from '@/lib/elevation';
 import { useFrame } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 import { TreeMeshes } from './Trees';
+import { playRetroSfx } from '@/lib/audio/sfx';
+import { resolveTowerDef } from '@/lib/doctrines';
+import { getPathPointsForRuntime, useRuntimeSnapshot } from '@/lib/runtime';
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface BuildingData {
@@ -240,6 +244,74 @@ function buildBuildings(buildings: BuildingData[]): {
 
 const PATH_COLORS = ['#ff9f43', '#ee5a24', '#18dcff'];
 const MIN_TOWER_SPACING = 1.5;
+const GRID_MIN = -48;
+const GRID_MAX = 48;
+
+function BattlefieldAtmosphere({
+  ashfallActive,
+  ashVeilActive,
+  dragonWakeActive,
+  plannerMode,
+}: {
+  ashfallActive: boolean;
+  ashVeilActive: boolean;
+  dragonWakeActive: boolean;
+  plannerMode: boolean;
+}) {
+  const dragonRef = useRef<THREE.Mesh>(null);
+
+  useFrame((state) => {
+    if (!dragonRef.current) return;
+    const material = dragonRef.current.material as THREE.MeshBasicMaterial;
+    if (!dragonWakeActive) {
+      material.opacity = 0;
+      return;
+    }
+    const pulse = 0.09 + Math.sin(state.clock.elapsedTime * 1.8) * 0.025;
+    material.opacity = plannerMode ? pulse * 0.35 : pulse;
+  });
+
+  return (
+    <>
+      {ashVeilActive && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 5.8, 0]}>
+          <planeGeometry args={[320, 320]} />
+          <meshBasicMaterial
+            color="#9a6448"
+            transparent
+            opacity={plannerMode ? 0.03 : 0.08}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+      )}
+
+      {ashfallActive && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 6.6, 0]}>
+          <planeGeometry args={[340, 340]} />
+          <meshBasicMaterial
+            color="#8f8b92"
+            transparent
+            opacity={plannerMode ? 0.04 : 0.12}
+            depthWrite={false}
+            blending={THREE.NormalBlending}
+          />
+        </mesh>
+      )}
+
+      <mesh ref={dragonRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 6.2, 0]}>
+        <planeGeometry args={[300, 300]} />
+        <meshBasicMaterial
+          color="#ff8f5a"
+          transparent
+          opacity={0}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+    </>
+  );
+}
 
 // ── Placement Preview ─────────────────────────────────────────────────
 function PlacementPreview({
@@ -323,9 +395,78 @@ function PlacementPreview({
   );
 }
 
+function OverlayInstancedCells({
+  positions,
+  color,
+  opacity,
+  y = 0.12,
+  scale = 0.92,
+}: {
+  positions: { x: number; z: number }[];
+  color: string;
+  opacity: number;
+  y?: number;
+  scale?: number;
+}) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const dummy = new THREE.Object3D();
+    const tint = new THREE.Color(color);
+
+    positions.forEach((pos, index) => {
+      dummy.position.set(pos.x, y, pos.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.scale.set(scale, scale, scale);
+      dummy.updateMatrix();
+      ref.current!.setMatrixAt(index, dummy.matrix);
+      ref.current!.setColorAt(index, tint);
+    });
+
+    ref.current.instanceMatrix.needsUpdate = true;
+    if (ref.current.instanceColor) {
+      ref.current.instanceColor.needsUpdate = true;
+    }
+  }, [positions, color, y, scale]);
+
+  if (positions.length === 0) return null;
+
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, positions.length]}>
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial
+        vertexColors
+        transparent
+        opacity={opacity}
+        depthWrite={false}
+        side={THREE.DoubleSide}
+      />
+    </instancedMesh>
+  );
+}
+
+function PathTerminalMarker({
+  x,
+  z,
+  color,
+  end = false,
+}: {
+  x: number;
+  z: number;
+  color: string;
+  end?: boolean;
+}) {
+  const y = getElevation(x, z) + 0.85;
+  return (
+    <mesh position={[x, y, z]}>
+      {end ? <octahedronGeometry args={[1.05, 0]} /> : <sphereGeometry args={[0.9, 14, 12]} />}
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.65} />
+    </mesh>
+  );
+}
+
 export const MAP_FADE_DURATION = 0.9;
-const MAP_ENTRY_OFFSET = new THREE.Vector3(0, -0.8, 3.5);
-const MAP_ENTRY_SCALE = 0.985;
 
 function applyFadeOpacity(group: THREE.Group | null, opacity: number) {
   if (!group) return;
@@ -355,15 +496,9 @@ function applyFadeOpacity(group: THREE.Group | null, opacity: number) {
 
 function applyEntryTransform(group: THREE.Group | null, progress: number) {
   if (!group) return;
-
-  const eased = 1 - Math.pow(1 - progress, 3);
-  group.position.set(
-    MAP_ENTRY_OFFSET.x * (1 - eased),
-    MAP_ENTRY_OFFSET.y * (1 - eased),
-    MAP_ENTRY_OFFSET.z * (1 - eased)
-  );
-  const scale = MAP_ENTRY_SCALE + (1 - MAP_ENTRY_SCALE) * eased;
-  group.scale.setScalar(scale);
+  void progress;
+  group.position.set(0, 0, 0);
+  group.scale.setScalar(1);
 }
 
 // ── Main Map Component ─────────────────────────────────────────────────
@@ -373,8 +508,18 @@ export function Map({ onRevealChange }: { onRevealChange?: (isRevealed: boolean)
   const phase = useGameStore((s) => s.phase);
   const towers = useGameStore((s) => s.towers);
   const money = useGameStore((s) => s.money);
+  const gameTime = useGameStore((s) => s.gameTime);
   const levelIndex = useGameStore((s) => s.levelIndex);
   const waveIndex = useGameStore((s) => s.waveIndex);
+  const cameraMode = useGameStore((s) => s.cameraMode);
+  const showPathOverlay = useGameStore((s) => s.showPathOverlay);
+  const currentWorld = useGameStore((s) => s.currentWorld);
+  const currentLevel = useGameStore((s) => s.currentLevel);
+  const setPlacementHint = useGameStore((s) => s.setPlacementHint);
+  const { priorityPathIndex, activeHazards } = useRuntimeSnapshot();
+  const ashfallActive = activeHazards.some((hazard) => hazard.active && hazard.label === 'Ashfall');
+  const ashVeilActive = activeHazards.some((hazard) => hazard.active && hazard.label === 'Ash Veil');
+  const dragonWakeActive = activeHazards.some((hazard) => hazard.active && hazard.type === 'dragonWake');
 
   const [mapData, setMapData] = useState<MapData | null>(null);
   const [landZones, setLandZones] = useState<LandZone[]>([]);
@@ -421,25 +566,192 @@ export function Map({ onRevealChange }: { onRevealChange?: (isRevealed: boolean)
     return computeBlockedCells(mapData.buildings);
   }, [mapData]);
 
+  const activePathIndexes = useMemo(() => {
+    if (!currentLevel) return [0];
+    const mapping: Record<string, number> = { main: 0, north: 1, south: 2 };
+    return currentLevel.activePathIds.map((id) => mapping[id]).filter((value) => value !== undefined);
+  }, [currentLevel]);
+
+  const restrictedCells = useMemo(() => {
+    const cells = new Set<string>();
+    for (const zone of currentLevel?.restrictedZones ?? []) {
+      if (zone.shape === 'rect') {
+        for (let x = Math.ceil(zone.xMin); x <= Math.floor(zone.xMax); x += 1) {
+          for (let z = Math.ceil(zone.zMin); z <= Math.floor(zone.zMax); z += 1) {
+            cells.add(`${x},${z}`);
+          }
+        }
+        continue;
+      }
+
+      const xs = zone.points.map((point) => point.x);
+      const zs = zone.points.map((point) => point.z);
+      const minX = Math.floor(Math.min(...xs));
+      const maxX = Math.ceil(Math.max(...xs));
+      const minZ = Math.floor(Math.min(...zs));
+      const maxZ = Math.ceil(Math.max(...zs));
+      for (let x = minX; x <= maxX; x += 1) {
+        for (let z = minZ; z <= maxZ; z += 1) {
+          if (pointInPolygon(x, z, zone.points.map((point) => [point.x, point.z]))) {
+            cells.add(`${x},${z}`);
+          }
+        }
+      }
+    }
+    return cells;
+  }, [currentLevel]);
+
+  const watchCells = useMemo(() => {
+    const cells = new Set<string>();
+    for (const zone of currentLevel?.buildZones ?? []) {
+      if (zone.type !== 'watch') continue;
+      if (zone.shape === 'rect') {
+        for (let x = Math.ceil(zone.xMin); x <= Math.floor(zone.xMax); x += 1) {
+          for (let z = Math.ceil(zone.zMin); z <= Math.floor(zone.zMax); z += 1) {
+            cells.add(`${x},${z}`);
+          }
+        }
+        continue;
+      }
+
+      const xs = zone.points.map((point) => point.x);
+      const zs = zone.points.map((point) => point.z);
+      const minX = Math.floor(Math.min(...xs));
+      const maxX = Math.ceil(Math.max(...xs));
+      const minZ = Math.floor(Math.min(...zs));
+      const maxZ = Math.ceil(Math.max(...zs));
+      for (let x = minX; x <= maxX; x += 1) {
+        for (let z = minZ; z <= maxZ; z += 1) {
+          if (pointInPolygon(x, z, zone.points.map((point) => [point.x, point.z]))) {
+            cells.add(`${x},${z}`);
+          }
+        }
+      }
+    }
+    return cells;
+  }, [currentLevel]);
+
+  const pathCells = useMemo(() => {
+    const cells = new Set<string>();
+    for (const pathIndex of activePathIndexes) {
+      for (const point of getPathPointsForRuntime(pathIndex, currentLevel, gameTime)) {
+        const snapped = snapToGrid(point);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            cells.add(`${snapped.x + dx},${snapped.z + dz}`);
+          }
+        }
+      }
+    }
+    return cells;
+  }, [activePathIndexes, currentLevel, gameTime]);
+
+  const runtimePaths = useMemo(
+    () =>
+      new globalThis.Map<number, { x: number; z: number }[]>(
+        activePathIndexes.map((pathIndex) => [
+          pathIndex,
+          getPathPointsForRuntime(pathIndex, currentLevel, gameTime),
+        ]),
+      ),
+    [activePathIndexes, currentLevel, gameTime],
+  );
+
+  const hazardCells = useMemo(() => {
+    const cells = new Set<string>();
+    for (const hazard of currentLevel?.hazards ?? []) {
+      if (hazard.type !== 'placementLock') continue;
+      const cyclePosition = gameTime % hazard.interval;
+      const showForecast =
+        cameraMode === 'planner'
+          ? cyclePosition <= hazard.duration + hazard.forecastLead
+          : cyclePosition <= hazard.duration;
+      if (!showForecast) continue;
+
+      for (const zone of hazard.zones) {
+        if (zone.shape === 'rect') {
+          for (let x = Math.ceil(zone.xMin); x <= Math.floor(zone.xMax); x += 1) {
+            for (let z = Math.ceil(zone.zMin); z <= Math.floor(zone.zMax); z += 1) {
+              cells.add(`${x},${z}`);
+            }
+          }
+          continue;
+        }
+
+        const xs = zone.points.map((point) => point.x);
+        const zs = zone.points.map((point) => point.z);
+        const minX = Math.floor(Math.min(...xs));
+        const maxX = Math.ceil(Math.max(...xs));
+        const minZ = Math.floor(Math.min(...zs));
+        const maxZ = Math.ceil(Math.max(...zs));
+        for (let x = minX; x <= maxX; x += 1) {
+          for (let z = minZ; z <= maxZ; z += 1) {
+            if (pointInPolygon(x, z, zone.points.map((point) => [point.x, point.z]))) {
+              cells.add(`${x},${z}`);
+            }
+          }
+        }
+      }
+    }
+    return cells;
+  }, [cameraMode, currentLevel, gameTime]);
+
+  const overlayCells = useMemo(() => {
+    const buildable: { x: number; z: number }[] = [];
+    const blocked: { x: number; z: number }[] = [];
+    const path: { x: number; z: number }[] = [];
+    const watch: { x: number; z: number }[] = [];
+    const hazard: { x: number; z: number }[] = [];
+
+    for (let x = GRID_MIN; x <= GRID_MAX; x += 1) {
+      for (let z = GRID_MIN; z <= GRID_MAX; z += 1) {
+        const key = `${x},${z}`;
+        if (pathCells.has(key)) {
+          path.push({ x, z });
+          continue;
+        }
+        if (hazardCells.has(key)) {
+          hazard.push({ x, z });
+          continue;
+        }
+        if (watchCells.has(key)) {
+          watch.push({ x, z });
+        }
+        if (blockedCells.has(key) || restrictedCells.has(key) || getElevation(x, z) <= 0.3) {
+          blocked.push({ x, z });
+          continue;
+        }
+        buildable.push({ x, z });
+      }
+    }
+
+    return { buildable, blocked, path, watch, hazard };
+  }, [blockedCells, hazardCells, pathCells, restrictedCells, watchCells]);
+
   // ── Unified placement validation ───────────────────────────────────
-  const isPositionValid = (pos: { x: number; z: number }): boolean => {
-    if (!selectedTowerDef) return false;
-    const def = TOWER_DEFS[selectedTowerDef];
-    if (!def || money < def.cost) return false;
+  const getPlacementStatus = (pos: { x: number; z: number }): { valid: boolean; reason: string | null } => {
+    if (!selectedTowerDef) return { valid: false, reason: null };
+    const def = resolveTowerDef(selectedTowerDef);
+    if (!def) return { valid: false, reason: null };
+    if (money < def.cost) return { valid: false, reason: 'Need more money' };
 
     // Water check
-    if (getElevation(pos.x, pos.z) <= 0.3) return false;
+    if (getElevation(pos.x, pos.z) <= 0.3) return { valid: false, reason: 'Cannot build on water' };
+
+    if (pathCells.has(`${pos.x},${pos.z}`)) return { valid: false, reason: 'Lane reserved' };
 
     // Building check
-    if (blockedCells.has(`${pos.x},${pos.z}`)) return false;
+    if (blockedCells.has(`${pos.x},${pos.z}`)) return { valid: false, reason: 'Blocked by building' };
+    if (restrictedCells.has(`${pos.x},${pos.z}`)) return { valid: false, reason: 'Build zone closed' };
+    if (hazardCells.has(`${pos.x},${pos.z}`)) return { valid: false, reason: 'Hazard lockout' };
 
     // Spacing from other towers
     for (const t of towers) {
       const dx = t.position.x - pos.x, dz = t.position.z - pos.z;
-      if (Math.sqrt(dx * dx + dz * dz) < MIN_TOWER_SPACING) return false;
+      if (Math.sqrt(dx * dx + dz * dz) < MIN_TOWER_SPACING) return { valid: false, reason: 'Too close to another tower' };
     }
 
-    return true;
+    return { valid: true, reason: 'Ready to place' };
   };
 
   const getPlacementPoint = (ray: THREE.Ray) => {
@@ -462,8 +774,13 @@ export function Map({ onRevealChange }: { onRevealChange?: (isRevealed: boolean)
     const point = getPlacementPoint(e.ray);
     if (!point) return;
     const snapped = snapToGrid({ x: point.x, z: point.z });
-    if (!isPositionValid(snapped)) return;
-    placeTower(selectedTowerDef, snapped);
+    const status = getPlacementStatus(snapped);
+    setPlacementHint(status.reason);
+    if (!status.valid) return;
+    if (placeTower(selectedTowerDef, snapped)) {
+      playRetroSfx('place');
+      setPlacementHint('Tower placed');
+    }
   };
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
@@ -476,10 +793,15 @@ export function Map({ onRevealChange }: { onRevealChange?: (isRevealed: boolean)
     }
     const snapped = snapToGrid({ x: point.x, z: point.z });
     setHoverPos(snapped);
-    setCanPlace(isPositionValid(snapped));
+    const status = getPlacementStatus(snapped);
+    setCanPlace(status.valid);
+    setPlacementHint(status.reason);
   };
 
-  const handlePointerLeave = () => setHoverPos(null);
+  const handlePointerLeave = () => {
+    setHoverPos(null);
+    setPlacementHint(null);
+  };
 
   const westMat = useFlattenMaterial({
     vertexColors: true, roughness: 0.75, side: THREE.DoubleSide,
@@ -696,13 +1018,115 @@ export function Map({ onRevealChange }: { onRevealChange?: (isRevealed: boolean)
         <TreeMeshes />
 
         {/* ── Enemy path glow (visible through buildings) ── */}
-        {/* ── Enemy path (main only) ── */}
-        <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
-          color={PATH_COLORS[0]} lineWidth={10} opacity={0.15} transparent
-          depthTest={true} depthWrite={false} />
-        <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
-          color={PATH_COLORS[0]} lineWidth={4} opacity={0.8} transparent
-          depthTest={true} depthWrite={false} />
+        {(showPathOverlay || cameraMode === 'planner') && (
+          <>
+            {activePathIndexes.map((pathIndex) => (
+              <group key={pathIndex}>
+                {(() => {
+                  const isPriority = priorityPathIndex === pathIndex;
+                  const hasPulse = activeHazards.some(
+                    (hazard) =>
+                      hazard.active &&
+                      hazard.affectedPathIndexes.includes(pathIndex) &&
+                      (hazard.type === 'laneSpeedPulse' || hazard.type === 'dragonWake'),
+                  );
+                  const outerWidth = cameraMode === 'planner' ? (isPriority ? 18 : 14) : isPriority ? 13 : 10;
+                  const innerWidth = cameraMode === 'planner' ? (isPriority ? 9 : 6) : isPriority ? 6 : 4;
+                  const outerOpacity = cameraMode === 'planner' ? (hasPulse ? 0.34 : 0.24) : hasPulse ? 0.2 : 0.15;
+                  const innerOpacity = hasPulse ? 0.96 : 0.84;
+                  return (
+                    <>
+                <Line points={(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex]).map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
+                  color={PATH_COLORS[pathIndex % PATH_COLORS.length]} lineWidth={outerWidth} opacity={outerOpacity} transparent
+                  depthTest={true} depthWrite={false} />
+                <Line points={(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex]).map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
+                  color={PATH_COLORS[pathIndex % PATH_COLORS.length]} lineWidth={innerWidth} opacity={innerOpacity} transparent
+                  depthTest={true} depthWrite={false} />
+                    </>
+                  );
+                })()}
+                <PathTerminalMarker
+                  x={(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex])[0].x}
+                  z={(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex])[0].z}
+                  color={PATH_COLORS[pathIndex % PATH_COLORS.length]}
+                />
+                <PathTerminalMarker
+                  x={(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex])[(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex]).length - 1].x}
+                  z={(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex])[(runtimePaths.get(pathIndex) ?? ALL_PATHS[pathIndex]).length - 1].z}
+                  color={PATH_COLORS[pathIndex % PATH_COLORS.length]}
+                  end
+                />
+              </group>
+            ))}
+          </>
+        )}
+
+        {showPathOverlay && (
+          <OverlayInstancedCells
+            positions={overlayCells.path}
+            color={PATH_COLORS[0]}
+            opacity={cameraMode === 'planner' ? 0.28 : 0.14}
+            y={0.14}
+          />
+        )}
+
+        {(showPathOverlay || cameraMode === 'planner') && (
+          <OverlayInstancedCells
+            positions={overlayCells.watch}
+            color="#7de7df"
+            opacity={cameraMode === 'planner' ? 0.24 : 0.1}
+            y={0.16}
+          />
+        )}
+
+        {(showPathOverlay || cameraMode === 'planner') && (
+          <OverlayInstancedCells
+            positions={overlayCells.hazard}
+            color="#ff7f6b"
+            opacity={cameraMode === 'planner' ? 0.32 : 0.14}
+            y={0.17}
+          />
+        )}
+
+        {cameraMode === 'planner' && (
+          <OverlayInstancedCells
+            positions={overlayCells.buildable}
+            color="#5e7a6b"
+            opacity={0.05}
+            y={0.11}
+            scale={0.86}
+          />
+        )}
+
+        {cameraMode === 'planner' && (
+          <OverlayInstancedCells
+            positions={overlayCells.blocked}
+            color="#6b3c3c"
+            opacity={0.15}
+            y={0.12}
+            scale={0.9}
+          />
+        )}
+
+        {currentWorld && (
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.18, 0]}>
+            <planeGeometry args={[280, 280]} />
+            <meshBasicMaterial
+              color={currentWorld.mapTint}
+              transparent
+              opacity={cameraMode === 'planner' ? 0.08 : 0.04}
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+        )}
+
+        <BattlefieldAtmosphere
+          ashfallActive={ashfallActive}
+          ashVeilActive={ashVeilActive}
+          dragonWakeActive={dragonWakeActive}
+          plannerMode={cameraMode === 'planner'}
+        />
       </group>
 
       {/* ── Click plane for tower placement (barely visible, above buildings) ── */}
@@ -722,7 +1146,7 @@ export function Map({ onRevealChange }: { onRevealChange?: (isRevealed: boolean)
         <PlacementPreview
           x={hoverPos.x}
           z={hoverPos.z}
-          range={TOWER_DEFS[selectedTowerDef].range}
+          range={resolveTowerDef(selectedTowerDef).range}
           canPlace={canPlace}
           towerColor={TOWER_DEFS[selectedTowerDef].color}
         />

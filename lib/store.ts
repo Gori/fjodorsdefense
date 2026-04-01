@@ -1,28 +1,37 @@
 import { create } from 'zustand';
 import type {
+  CameraMode,
   GamePhase,
+  PlacementInvalidReason,
   TowerInstance,
-  EnemyInstance,
-  ProjectileInstance,
   Vec2,
-  SpawnState,
 } from './types';
-import { TOWER_DEFS } from './towerDefs';
-import { ALL_PATHS } from './pathData';
 import { CAMPAIGN } from './levels/loadCampaign';
-import type { ResolvedCampaign, ResolvedLevel, ResolvedWave } from './levels/types';
-import { advanceCampaignProgress, getLevelRuntimeState } from './levels/runtime';
-import { createEnemyFromGroup } from './gameplay/spawning';
-import { distance } from './mapUtils';
-
-let _nextId = 0;
-function uid(): string {
-  return `e${++_nextId}`;
-}
+import type {
+  ResolvedCampaign,
+  ResolvedCampaignChoice,
+  ResolvedLevel,
+  ResolvedWave,
+  ResolvedWorld,
+} from './levels/types';
+import {
+  advanceCampaignProgress,
+  createFreshSave,
+  getLevelRuntimeState,
+  getPendingChoice,
+  resolveEnding,
+} from './levels/runtime';
+import { distance, pointInPolygon } from './mapUtils';
+import { gameRuntime, getPathPointsForRuntime } from './runtime';
+import { resolveTowerDef } from './doctrines';
+import { useCampaignStore } from './campaignStore';
+import { useProfileStore } from './profileStore';
 
 interface GameStore {
   phase: GamePhase;
   campaign: ResolvedCampaign;
+  worldIndex: number;
+  currentWorld: ResolvedWorld | null;
   levelIndex: number;
   waveIndex: number;
   currentLevel: ResolvedLevel | null;
@@ -32,159 +41,194 @@ interface GameStore {
   lives: number;
   gameTime: number;
   towers: TowerInstance[];
-  enemies: EnemyInstance[];
-  projectiles: ProjectileInstance[];
   selectedTowerDef: string | null;
-  spawnStates: SpawnState[];
+  cameraMode: CameraMode;
+  cameraModeBeforeFirstPerson: Exclude<CameraMode, 'firstPerson'>;
+  showPathOverlay: boolean;
+  showCodex: boolean;
+  placementHint: string | null;
+  pendingChoice: ResolvedCampaignChoice | null;
+  pendingDoctrineTowerId: string | null;
+  activeHazardLabel: string | null;
 
-  startGame: () => void;
+  hydratePersistence: () => void;
+  startGame: (slot?: number) => void;
   startWave: () => void;
   placeTower: (defId: string, position: Vec2) => boolean;
   selectTowerDef: (defId: string | null) => void;
+  setCameraMode: (mode: CameraMode) => void;
+  toggleCameraMode: () => void;
+  toggleFirstPersonMode: () => void;
+  togglePathOverlay: () => void;
+  toggleCodex: () => void;
+  setPlacementHint: (hint: string | null) => void;
+  chooseBranch: (choiceId: string, optionId: string) => void;
+  chooseDoctrine: (towerId: string, doctrineId: string) => void;
   tick: (delta: number) => void;
 }
 
 type StoreSetter = (partial: Partial<GameStore>) => void;
 
-const PROJECTILE_HIT_RADIUS = 0.6;
-const AOE_RADIUS = 4;
-const SLOW_DURATION = 2.0;
-const SLOW_FACTOR = 0.5;
 const MIN_TOWER_SPACING = 1.5;
 
-function createSpawnStates(wave: ResolvedWave): SpawnState[] {
-  return wave.groups.map((_, index) => ({
-    groupIndex: index,
-    spawned: 0,
-    timer: 0,
-  }));
+function createTowerIdFactory() {
+  let nextId = 0;
+  return {
+    reset() {
+      nextId = 0;
+    },
+    next() {
+      nextId += 1;
+      return `t${nextId}`;
+    },
+  };
 }
 
-function resetTowersForWave(towers: TowerInstance[]): TowerInstance[] {
-  return towers.map((tower) => ({ ...tower, lastFireTime: -100, targetEnemyId: null }));
+const towerIds = createTowerIdFactory();
+
+function findPendingDoctrineTower(level: ResolvedLevel | null, doctrineChoices: Record<string, string>) {
+  if (!level) return null;
+  return level.newTowerIds.find((towerId) => !doctrineChoices[towerId]) ?? null;
 }
 
-function moveEnemy(enemy: EnemyInstance, delta: number): boolean {
-  const pathPoints = ALL_PATHS[enemy.pathIndex];
-  if (!pathPoints || pathPoints.length === 0) {
-    throw new Error(`Missing path at index ${enemy.pathIndex}`);
-  }
-
-  if (enemy.waypointIndex >= pathPoints.length) return true;
-
-  const speed = enemy.speed * (enemy.slowTimer > 0 ? SLOW_FACTOR : 1.0);
-  const target = pathPoints[enemy.waypointIndex];
-  const dx = target.x - enemy.position.x;
-  const dz = target.z - enemy.position.z;
-  const dist = Math.sqrt(dx * dx + dz * dz);
-  const step = speed * delta;
-
-  if (step >= dist) {
-    enemy.position = { x: target.x, z: target.z };
-    enemy.waypointIndex++;
-    if (enemy.waypointIndex >= pathPoints.length) return true;
-  } else {
-    enemy.position = {
-      x: enemy.position.x + (dx / dist) * step,
-      z: enemy.position.z + (dz / dist) * step,
-    };
-  }
-
-  if (enemy.slowTimer > 0) {
-    enemy.slowTimer = Math.max(0, enemy.slowTimer - delta);
-  }
-
-  return false;
-}
-
-function findTarget(tower: TowerInstance, enemies: EnemyInstance[]): EnemyInstance | null {
-  const def = TOWER_DEFS[tower.defId];
-  let best: EnemyInstance | null = null;
-  let bestProgress = -1;
-
-  for (const enemy of enemies) {
-    if (enemy.hp <= 0) continue;
-    const dist = distance(tower.position, enemy.position);
-    if (dist > def.range) continue;
-
-    const progress = enemy.waypointIndex * 10000 - dist;
-    if (progress > bestProgress) {
-      bestProgress = progress;
-      best = enemy;
+function getHazardAlert(level: ResolvedLevel | null, gameTime: number): string | null {
+  if (!level) return null;
+  for (const hazard of level.hazards) {
+    if (hazard.type === 'dragonWake') {
+      return hazard.label;
+    }
+    if (hazard.type === 'globalAlert') {
+      if (!hazard.interval || hazard.duration === undefined || gameTime % hazard.interval <= hazard.duration) {
+        return hazard.label;
+      }
+      continue;
+    }
+    if (hazard.type === 'laneSpeedPulse' && gameTime % hazard.interval <= hazard.duration) {
+      return hazard.label;
+    }
+    if (hazard.type === 'placementLock' && gameTime % hazard.interval <= hazard.duration) {
+      return hazard.label;
     }
   }
-
-  return best;
+  return level.hazards[0]?.label ?? null;
 }
 
-function moveProjectile(
-  proj: ProjectileInstance,
-  enemies: EnemyInstance[],
-  delta: number,
-): 'hit' | 'miss' | 'moving' {
-  const target = enemies.find((enemy) => enemy.id === proj.targetEnemyId);
-  if (!target || target.hp <= 0) return 'miss';
-
-  const dx = target.position.x - proj.position.x;
-  const dz = target.position.z - proj.position.z;
-  const dist = Math.sqrt(dx * dx + dz * dz);
-
-  if (dist < PROJECTILE_HIT_RADIUS) return 'hit';
-
-  const step = proj.speed * delta;
-  if (step >= dist) return 'hit';
-
-  proj.position = {
-    x: proj.position.x + (dx / dist) * step,
-    z: proj.position.z + (dz / dist) * step,
-  };
-
-  return 'moving';
+function zoneContainsPosition(
+  zone: ResolvedLevel['restrictedZones'][number] | ResolvedLevel['buildZones'][number],
+  position: Vec2,
+) {
+  if (zone.shape === 'rect') {
+    return (
+      position.x >= zone.xMin &&
+      position.x <= zone.xMax &&
+      position.z >= zone.zMin &&
+      position.z <= zone.zMax
+    );
+  }
+  return pointInPolygon(position.x, position.z, zone.points.map((point) => [point.x, point.z]));
 }
 
-function startPreparedWave(set: StoreSetter, state: GameStore, wave: ResolvedWave) {
-  set({
-    phase: 'playing',
-    currentWave: wave,
-    spawnStates: createSpawnStates(wave),
-    gameTime: 0,
-    towers: resetTowersForWave(state.towers),
-  });
+function isLaneNoBuild(level: ResolvedLevel | null, position: Vec2, gameTime: number) {
+  if (!level) return false;
+  return level.lanes.some((lane) =>
+    getPathPointsForRuntime(lane.pathIndex, level, gameTime).some((point) => distance(point, position) <= 1.4),
+  );
 }
 
-function transitionToLevelStart(
+function getPlacementReasonLabel(reason: PlacementInvalidReason | null) {
+  switch (reason) {
+    case 'occupied_by_structure':
+      return 'Blocked by structure';
+    case 'blocked_by_hazard':
+      return 'Blocked by hazard';
+    case 'in_lane_no_build_zone':
+      return 'Cannot build in lane';
+    case 'world_locked_zone':
+      return 'Zone locked';
+    case 'too_close_to_tower':
+      return 'Too close to another tower';
+    case 'insufficient_money':
+      return 'Need more money';
+    case 'cannot_build_on_water':
+      return 'Cannot build on water';
+    default:
+      return null;
+  }
+}
+
+function getWatchZoneBonus(level: ResolvedLevel | null, position: Vec2) {
+  if (!level) return 0;
+  for (const zone of level.buildZones) {
+    if (zone.type !== 'watch') continue;
+    if (!zoneContainsPosition(zone, position)) continue;
+    return zone.rangeBonus ?? 0;
+  }
+  return 0;
+}
+
+function getPlacementHazardReason(level: ResolvedLevel | null, gameTime: number, position: Vec2): PlacementInvalidReason | null {
+  if (!level) return null;
+  for (const hazard of level.hazards) {
+    if (hazard.type !== 'placementLock') continue;
+    if (gameTime % hazard.interval > hazard.duration) continue;
+    if (hazard.zones.some((zone) => zoneContainsPosition(zone, position))) {
+      return hazard.placementReason ?? 'blocked_by_hazard';
+    }
+  }
+  return null;
+}
+
+function applyLevelState(
   set: StoreSetter,
   campaign: ResolvedCampaign,
-  levelIndex: number,
-  waveIndex = 0,
+  slot = useCampaignStore.getState().activeSlot,
+  moneyOverride?: number,
+  preserveTowers = false,
 ) {
-  const runtime = getLevelRuntimeState(campaign, levelIndex, waveIndex);
+  const save = useCampaignStore.getState().startOrResumeSlot(slot);
+  const runtime = getLevelRuntimeState(campaign, save, save.currentNodeId, save.currentWaveIndex, useProfileStore.getState().profile.activeChallengeMutators);
+  const pendingChoice = getPendingChoice(campaign, save.currentNodeId);
+  const pendingDoctrineTowerId = findPendingDoctrineTower(runtime.currentLevel, save.doctrineChoices);
+  const phase: GamePhase =
+    pendingChoice || pendingDoctrineTowerId
+      ? 'intermission'
+      : runtime.currentLevel.autoStartWaves
+        ? 'playing'
+        : 'between-waves';
+
   set({
-    phase: runtime.currentLevel.autoStartWaves ? 'playing' : 'between-waves',
+    phase,
     campaign,
+    worldIndex: runtime.worldIndex,
+    currentWorld: runtime.currentWorld,
     levelIndex: runtime.levelIndex,
     waveIndex: runtime.waveIndex,
     currentLevel: runtime.currentLevel,
     currentWave: runtime.currentWave,
     availableTowerIds: runtime.availableTowerIds,
-    money: runtime.startingMoney,
+    money: moneyOverride ?? runtime.startingMoney,
     lives: runtime.startingLives,
     gameTime: 0,
-    towers: [],
-    enemies: [],
-    projectiles: [],
+    towers: preserveTowers ? useGameStore.getState().towers : [],
     selectedTowerDef: runtime.startingSelectedTower,
-    spawnStates: runtime.currentLevel.autoStartWaves ? createSpawnStates(runtime.currentWave) : [],
+    pendingChoice,
+    pendingDoctrineTowerId,
+    activeHazardLabel: getHazardAlert(runtime.currentLevel, 0),
   });
+
+  gameRuntime.setLevelState(runtime.currentLevel, runtime.currentWave, [], false);
 }
 
-const initialRuntime = getLevelRuntimeState(CAMPAIGN, 0, 0);
+const initialSave = createFreshSave(CAMPAIGN, 0);
+const initialRuntime = getLevelRuntimeState(CAMPAIGN, initialSave);
 
 export const useGameStore = create<GameStore>((set, get) => ({
   phase: 'menu',
   campaign: CAMPAIGN,
-  levelIndex: 0,
-  waveIndex: 0,
+  worldIndex: initialRuntime.worldIndex,
+  currentWorld: initialRuntime.currentWorld,
+  levelIndex: initialRuntime.levelIndex,
+  waveIndex: initialRuntime.waveIndex,
   currentLevel: initialRuntime.currentLevel,
   currentWave: initialRuntime.currentWave,
   availableTowerIds: initialRuntime.availableTowerIds,
@@ -192,240 +236,299 @@ export const useGameStore = create<GameStore>((set, get) => ({
   lives: initialRuntime.startingLives,
   gameTime: 0,
   towers: [],
-  enemies: [],
-  projectiles: [],
   selectedTowerDef: initialRuntime.startingSelectedTower,
-  spawnStates: [],
+  cameraMode: 'tactical',
+  cameraModeBeforeFirstPerson: 'tactical',
+  showPathOverlay: true,
+  showCodex: false,
+  placementHint: null,
+  pendingChoice: null,
+  pendingDoctrineTowerId: null,
+  activeHazardLabel: null,
 
-  startGame: () => {
-    _nextId = 0;
-    transitionToLevelStart(set, CAMPAIGN, 0, 0);
+  hydratePersistence: () => {
+    useProfileStore.getState().hydrate();
+    useCampaignStore.getState().hydrate();
+  },
+
+  startGame: (slot = useProfileStore.getState().profile.lastSlot ?? 0) => {
+    towerIds.reset();
+    gameRuntime.reset();
+    applyLevelState(set, CAMPAIGN, slot);
   },
 
   startWave: () => {
     const state = get();
     if (!state.currentWave || !state.currentLevel) return;
-    startPreparedWave(set, state, state.currentWave);
+    if (state.pendingChoice || state.pendingDoctrineTowerId) return;
+    set({
+      phase: 'playing',
+      gameTime: 0,
+    });
+    gameRuntime.startWave(state.currentLevel, state.currentWave, state.towers);
   },
 
-  placeTower: (defId: string, position: Vec2) => {
+  placeTower: (defId, position) => {
     const state = get();
-    const def = TOWER_DEFS[defId];
-    if (!def) return false;
+    const campaignSave = useCampaignStore.getState().activeSave;
+    const def = resolveTowerDef(defId, campaignSave.doctrineChoices[defId]);
     if (!state.availableTowerIds.includes(defId)) return false;
-    if (state.money < def.cost) return false;
+    if (state.money < def.cost) {
+      set({ placementHint: getPlacementReasonLabel('insufficient_money') });
+      return false;
+    }
     if (state.phase !== 'playing' && state.phase !== 'between-waves') return false;
 
+    const hazardReason = getPlacementHazardReason(state.currentLevel, state.gameTime, position);
+    if (hazardReason) {
+      set({ placementHint: getPlacementReasonLabel(hazardReason) });
+      return false;
+    }
+
+    for (const zone of state.currentLevel?.restrictedZones ?? []) {
+      if (zoneContainsPosition(zone, position)) {
+        set({ placementHint: getPlacementReasonLabel('occupied_by_structure') });
+        return false;
+      }
+    }
+
+    if (isLaneNoBuild(state.currentLevel, position, state.gameTime)) {
+      set({ placementHint: getPlacementReasonLabel('in_lane_no_build_zone') });
+      return false;
+    }
+
     for (const tower of state.towers) {
-      if (distance(position, tower.position) < MIN_TOWER_SPACING) return false;
+      if (distance(position, tower.position) < MIN_TOWER_SPACING) {
+        set({ placementHint: getPlacementReasonLabel('too_close_to_tower') });
+        return false;
+      }
     }
 
     const newTower: TowerInstance = {
-      id: uid(),
+      id: towerIds.next(),
       defId,
       position: { x: position.x, z: position.z },
       lastFireTime: -100,
       targetEnemyId: null,
+      doctrineId: campaignSave.doctrineChoices[defId] ?? null,
+      rangeBonus: getWatchZoneBonus(state.currentLevel, position),
+      fireRateBonus: 0,
     };
 
+    const towers = [...state.towers, newTower];
     set({
-      towers: [...state.towers, newTower],
+      towers,
       money: state.money - def.cost,
+      placementHint: 'Tower placed',
     });
-
+    gameRuntime.setTowers(towers);
     return true;
   },
 
-  selectTowerDef: (defId: string | null) => {
+  selectTowerDef: (defId) => {
     const state = get();
     if (defId !== null && !state.availableTowerIds.includes(defId)) return;
     set({ selectedTowerDef: defId });
   },
 
-  tick: (delta: number) => {
+  setCameraMode: (mode) =>
+    set((state) => ({
+      cameraMode: mode,
+      cameraModeBeforeFirstPerson:
+        mode === 'firstPerson' ? state.cameraModeBeforeFirstPerson : mode,
+    })),
+
+  toggleCameraMode: () =>
+    set((state) => ({
+      cameraMode: state.cameraMode === 'planner' ? 'tactical' : 'planner',
+      cameraModeBeforeFirstPerson: state.cameraMode === 'planner' ? 'tactical' : 'planner',
+    })),
+
+  toggleFirstPersonMode: () =>
+    set((state) => ({
+      cameraMode:
+        state.cameraMode === 'firstPerson'
+          ? state.cameraModeBeforeFirstPerson
+          : 'firstPerson',
+    })),
+
+  togglePathOverlay: () =>
+    set((state) => ({
+      showPathOverlay: !state.showPathOverlay,
+    })),
+
+  toggleCodex: () =>
+    set((state) => ({
+      showCodex: !state.showCodex,
+    })),
+
+  setPlacementHint: (hint) => set({ placementHint: hint }),
+
+  chooseBranch: (choiceId, optionId) => {
+    const save = useCampaignStore.getState().chooseBranch(choiceId, optionId);
+    const runtime = getLevelRuntimeState(CAMPAIGN, save, save.currentNodeId, save.currentWaveIndex, useProfileStore.getState().profile.activeChallengeMutators);
+    const pendingDoctrineTowerId = findPendingDoctrineTower(runtime.currentLevel, save.doctrineChoices);
+    set({
+      phase: pendingDoctrineTowerId ? 'intermission' : 'between-waves',
+      worldIndex: runtime.worldIndex,
+      currentWorld: runtime.currentWorld,
+      levelIndex: runtime.levelIndex,
+      waveIndex: runtime.waveIndex,
+      currentLevel: runtime.currentLevel,
+      currentWave: runtime.currentWave,
+      availableTowerIds: runtime.availableTowerIds,
+      money: runtime.startingMoney,
+      lives: runtime.startingLives,
+      gameTime: 0,
+      towers: [],
+      pendingChoice: null,
+      pendingDoctrineTowerId,
+      selectedTowerDef: runtime.startingSelectedTower,
+      activeHazardLabel: getHazardAlert(runtime.currentLevel, 0),
+    });
+    gameRuntime.setLevelState(runtime.currentLevel, runtime.currentWave, [], false);
+  },
+
+  chooseDoctrine: (towerId, doctrineId) => {
+    const save = useCampaignStore.getState().chooseDoctrine(towerId, doctrineId);
+    const pendingDoctrineTowerId = findPendingDoctrineTower(get().currentLevel, save.doctrineChoices);
+    const selectedTowerDef = get().selectedTowerDef;
+    set({
+      pendingDoctrineTowerId,
+      phase: get().pendingChoice || pendingDoctrineTowerId ? 'intermission' : 'between-waves',
+      selectedTowerDef:
+        selectedTowerDef !== null && get().availableTowerIds.includes(selectedTowerDef)
+          ? selectedTowerDef
+          : towerId,
+    });
+  },
+
+  tick: (delta) => {
     const state = get();
     if (state.phase !== 'playing' || !state.currentLevel || !state.currentWave) return;
 
-    const gameTime = state.gameTime + delta;
-    let lives = state.lives;
-    let money = state.money;
-    const enemies: EnemyInstance[] = state.enemies.map((enemy) => ({
-      ...enemy,
-      position: { ...enemy.position },
-      tags: enemy.tags ? [...enemy.tags] : undefined,
-    }));
-    const projectiles = state.projectiles.map((proj) => ({ ...proj, position: { ...proj.position } }));
-    const towers = state.towers.map((tower) => ({ ...tower }));
-    const newSpawnStates = state.spawnStates.map((spawnState) => ({ ...spawnState }));
+    const result = gameRuntime.tick(Math.min(delta, 0.05));
+    const nextGameTime = state.gameTime + Math.min(delta, 0.05);
+    const laneBreaches = Math.max(0, -result.livesDelta);
+    set({
+      gameTime: nextGameTime,
+      activeHazardLabel: getHazardAlert(state.currentLevel, nextGameTime),
+    });
 
-    for (let i = 0; i < state.currentWave.groups.length; i++) {
-      const group = state.currentWave.groups[i];
-      const spawnState = newSpawnStates[i];
-      if (!spawnState || spawnState.spawned >= group.count) continue;
+    if (!result.moneyDelta && !result.livesDelta && !result.waveComplete) return;
 
-      spawnState.timer += delta;
-
-      if (spawnState.timer >= group.startDelay) {
-        const elapsed = spawnState.timer - group.startDelay;
-        const shouldHaveSpawned = Math.min(group.count, Math.floor(elapsed / group.spawnInterval) + 1);
-
-        while (spawnState.spawned < shouldHaveSpawned) {
-          const enemy = createEnemyFromGroup(group, uid());
-          if (enemy) {
-            enemies.push(enemy);
-          }
-          spawnState.spawned++;
-        }
-      }
-    }
-
-    const reachedEnd = new Set<string>();
-    for (const enemy of enemies) {
-      if (enemy.hp <= 0) continue;
-      if (moveEnemy(enemy, delta)) {
-        reachedEnd.add(enemy.id);
-        lives--;
-      }
-    }
-
-    const aliveEnemies = enemies.filter((enemy) => enemy.hp > 0 && !reachedEnd.has(enemy.id));
-
-    for (const tower of towers) {
-      const def = TOWER_DEFS[tower.defId];
-      const target = findTarget(tower, aliveEnemies);
-      tower.targetEnemyId = target?.id ?? null;
-
-      if (target && gameTime - tower.lastFireTime >= 1 / def.fireRate) {
-        tower.lastFireTime = gameTime;
-        projectiles.push({
-          id: uid(),
-          towerId: tower.id,
-          towerDefId: tower.defId,
-          targetEnemyId: target.id,
-          position: { x: tower.position.x, z: tower.position.z },
-          damage: def.damage,
-          speed: def.projectileSpeed,
-          special: def.special,
-        });
-      }
-    }
-
-    const projectilesToRemove = new Set<string>();
-    for (const proj of projectiles) {
-      const result = moveProjectile(proj, aliveEnemies, delta);
-
-      if (result === 'miss') {
-        projectilesToRemove.add(proj.id);
-      } else if (result === 'hit') {
-        projectilesToRemove.add(proj.id);
-
-        const target = aliveEnemies.find((enemy) => enemy.id === proj.targetEnemyId);
-        if (target) {
-          target.hp -= proj.damage;
-
-          if (proj.special === 'slow') {
-            target.slowTimer = SLOW_DURATION;
-          }
-
-          if (proj.special === 'aoe') {
-            for (const other of aliveEnemies) {
-              if (other.id === target.id) continue;
-              if (distance(target.position, other.position) < AOE_RADIUS) {
-                other.hp -= proj.damage * 0.5;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    const survivingEnemies: EnemyInstance[] = [];
-    for (const enemy of enemies) {
-      if (reachedEnd.has(enemy.id)) continue;
-      if (enemy.hp <= 0) {
-        money += enemy.reward;
-      } else {
-        survivingEnemies.push(enemy);
-      }
-    }
-
-    const survivingProjectiles = projectiles.filter((proj) => !projectilesToRemove.has(proj.id));
-
-    const allSpawned = newSpawnStates.every((spawnState, index) => spawnState.spawned >= state.currentWave!.groups[index].count);
-    const waveComplete = allSpawned && survivingEnemies.length === 0;
+    const money = state.money + result.moneyDelta;
+    const lives = state.lives + result.livesDelta;
 
     if (lives <= 0) {
+      useCampaignStore.getState().saveLevelResult({
+        currentNodeId: useCampaignStore.getState().activeSave.currentNodeId,
+        currentWaveIndex: state.waveIndex,
+        livesRemaining: 0,
+        laneBreaches,
+      });
       set({
-        gameTime,
-        enemies: survivingEnemies,
-        projectiles: survivingProjectiles,
-        towers,
         money,
         lives: 0,
-        spawnStates: newSpawnStates,
         phase: 'gameover',
       });
       return;
     }
 
-    if (!waveComplete) {
+    if (!result.waveComplete) {
       set({
-        gameTime,
-        enemies: survivingEnemies,
-        projectiles: survivingProjectiles,
-        towers,
         money,
         lives,
-        spawnStates: newSpawnStates,
       });
       return;
     }
 
-    const next = advanceCampaignProgress(state.campaign, state.levelIndex, state.waveIndex);
-    const levelChanged = next.levelIndex !== state.levelIndex;
-
-    if (next.phase === 'victory' || !next.currentLevel || !next.currentWave) {
-      set({
-        gameTime,
-        enemies: [],
-        projectiles: [],
-        towers,
-        money: money + state.currentWave.completionBonus,
-        lives,
-        spawnStates: [],
-        phase: 'victory',
-        levelIndex: state.levelIndex,
-        waveIndex: state.waveIndex,
-        currentLevel: state.currentLevel,
-        currentWave: state.currentWave,
-      });
-      return;
-    }
-
-    if (levelChanged) {
-      transitionToLevelStart(set, state.campaign, next.levelIndex, next.waveIndex);
-      return;
-    }
-
-    const nextPhase = next.currentLevel.autoStartWaves ? 'playing' : 'between-waves';
-    set({
-      gameTime: next.currentLevel.autoStartWaves ? 0 : gameTime,
-      enemies: [],
-      projectiles: [],
-      towers: next.currentLevel.autoStartWaves ? resetTowersForWave(towers) : towers,
-      money: money + state.currentWave.completionBonus,
-      lives,
-      spawnStates: next.currentLevel.autoStartWaves ? createSpawnStates(next.currentWave) : [],
-      phase: nextPhase,
-      levelIndex: next.levelIndex,
-      waveIndex: next.waveIndex,
-      currentLevel: next.currentLevel,
-      currentWave: next.currentWave,
-      availableTowerIds: next.availableTowerIds,
-      selectedTowerDef:
-        state.selectedTowerDef && next.availableTowerIds.includes(state.selectedTowerDef)
-          ? state.selectedTowerDef
-          : next.currentLevel.startingSelectedTower,
+    const completesNode = !state.currentLevel.waves[state.waveIndex + 1];
+    const saved = useCampaignStore.getState().saveLevelResult({
+      currentNodeId: useCampaignStore.getState().activeSave.currentNodeId,
+      currentWaveIndex: state.waveIndex,
+      livesRemaining: lives,
+      laneBreaches,
+      completeNode: completesNode,
+      codexUnlocks: state.currentLevel.codexUnlocks,
+      towerUnlocks: state.currentLevel.newTowerIds,
     });
+    const next = advanceCampaignProgress(state.campaign, saved, state.waveIndex);
+    const moneyWithBonus = money + state.currentWave.completionBonus;
+
+    if (next.phase === 'victory' || !next.currentLevel) {
+      const ending = resolveEnding(state.campaign, saved);
+      useCampaignStore.getState().finalizeEnding();
+      set({
+        phase: 'victory',
+        money: moneyWithBonus,
+        lives,
+        activeHazardLabel: ending.title,
+      });
+      gameRuntime.setLevelState(null, null, gameRuntime.getTowers(), false);
+      return;
+    }
+
+    if (next.phase === 'intermission' && next.pendingChoice) {
+      set({
+        phase: 'intermission',
+        money: moneyWithBonus,
+        lives,
+        pendingChoice: next.pendingChoice,
+        currentWave: null,
+      });
+      gameRuntime.setLevelState(state.currentLevel, null, gameRuntime.getTowers(), false);
+      return;
+    }
+
+    const nextSave = {
+      ...saved,
+      currentNodeId: next.nodeId ?? saved.currentNodeId,
+      currentWaveIndex: next.waveIndex,
+    };
+    useCampaignStore.getState().overwriteActiveSave(nextSave);
+
+    const sameNode = next.nodeId === saved.currentNodeId;
+    if (sameNode && next.currentWave && next.currentLevel) {
+      set({
+        phase: 'between-waves',
+        waveIndex: next.waveIndex,
+        currentWave: next.currentWave,
+        availableTowerIds: next.availableTowerIds,
+        money: moneyWithBonus,
+        lives,
+        gameTime: 0,
+        pendingChoice: null,
+        pendingDoctrineTowerId: null,
+        activeHazardLabel: getHazardAlert(next.currentLevel, 0),
+      });
+      gameRuntime.setLevelState(next.currentLevel, next.currentWave, state.towers, false);
+      return;
+    }
+
+    const runtime = getLevelRuntimeState(state.campaign, nextSave, nextSave.currentNodeId, nextSave.currentWaveIndex, useProfileStore.getState().profile.activeChallengeMutators);
+    const pendingDoctrineTowerId = findPendingDoctrineTower(runtime.currentLevel, nextSave.doctrineChoices);
+    set({
+      phase: pendingDoctrineTowerId ? 'intermission' : 'between-waves',
+      worldIndex: runtime.worldIndex,
+      currentWorld: runtime.currentWorld,
+      levelIndex: runtime.levelIndex,
+      waveIndex: runtime.waveIndex,
+      currentLevel: runtime.currentLevel,
+      currentWave: runtime.currentWave,
+      availableTowerIds: runtime.availableTowerIds,
+      selectedTowerDef:
+        state.selectedTowerDef && runtime.availableTowerIds.includes(state.selectedTowerDef)
+          ? state.selectedTowerDef
+          : runtime.startingSelectedTower,
+      money: Math.max(moneyWithBonus, runtime.startingMoney),
+      lives,
+      gameTime: 0,
+      towers: [],
+      pendingChoice: null,
+      pendingDoctrineTowerId,
+      activeHazardLabel: getHazardAlert(runtime.currentLevel, 0),
+    });
+    gameRuntime.setLevelState(runtime.currentLevel, runtime.currentWave, [], false);
   },
 }));

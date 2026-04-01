@@ -1,10 +1,11 @@
 'use client';
 
-import { startTransition, useEffect, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useGameStore } from '@/lib/store';
+import { gameRuntime, useRuntimeSnapshot } from '@/lib/runtime';
 import { getElevation } from '@/lib/elevation';
 import * as THREE from 'three';
+import { useGameStore } from '@/lib/store';
 
 interface ParticleEffect {
   id: string;
@@ -12,65 +13,103 @@ interface ParticleEffect {
   position: THREE.Vector3;
   startTime: number;
   duration: number;
+  particleCount: number;
 }
 
 const SMOKE_DURATION = 600;
 const EXPLOSION_DURATION = 400;
 
 export function ParticleEffects() {
-  const enemies = useGameStore((s) => s.enemies);
+  const { enemyCount, projectiles } = useRuntimeSnapshot();
   const [effects, setEffects] = useState<ParticleEffect[]>([]);
-  const prevEnemyIds = useRef<Set<string>>(new Set());
-  const enemyPositions = useRef<Map<string, { x: number; z: number }>>(new Map());
-  useFrame(() => {
-    const now = Date.now();
-    const currentIds = new Set(enemies.map((e) => e.id));
-    const nextEffects: ParticleEffect[] = [];
+  const nextEffectId = useRef(0);
+  const cleanupTimer = useRef(0);
+  const loadScore = enemyCount + projectiles.length;
+  const loadRef = useRef(loadScore);
+  const effectBudget = useMemo(() => {
+    if (loadScore >= 110) return 12;
+    if (loadScore >= 80) return 18;
+    if (loadScore >= 55) return 26;
+    return 40;
+  }, [loadScore]);
+  const effectBudgetRef = useRef(effectBudget);
+  const effectCountRef = useRef(0);
 
-    for (const enemy of enemies) {
-      enemyPositions.current.set(enemy.id, { x: enemy.position.x, z: enemy.position.z });
-      if (!prevEnemyIds.current.has(enemy.id)) {
-        const y = getElevation(enemy.position.x, enemy.position.z);
-        nextEffects.push({
-          id: `smoke-${enemy.id}`,
+  useEffect(() => {
+    loadRef.current = loadScore;
+    effectBudgetRef.current = effectBudget;
+  }, [effectBudget, loadScore]);
+
+  useEffect(() => {
+    effectCountRef.current = effects.length;
+  }, [effects.length]);
+
+  useEffect(() => {
+    const unsubscribe = gameRuntime.subscribeEvents((event) => {
+      let effect: ParticleEffect | null = null;
+      const stress = loadRef.current;
+      const overBudget = effectCountRef.current >= effectBudgetRef.current;
+
+      if (event.type === 'enemy_spawned') {
+        if (stress >= 80 || overBudget) return;
+        const y = getElevation(event.position.x, event.position.z);
+        effect = {
+          id: `smoke-${nextEffectId.current++}`,
           type: 'smoke',
-          position: new THREE.Vector3(enemy.position.x, y + 0.5, enemy.position.z),
-          startTime: now,
+          position: new THREE.Vector3(event.position.x, y + 0.5, event.position.z),
+          startTime: Date.now(),
           duration: SMOKE_DURATION,
-        });
+          particleCount: stress >= 55 ? 6 : 12,
+        };
       }
-    }
 
-    for (const id of prevEnemyIds.current) {
-      if (!currentIds.has(id)) {
-        const lastPosition = enemyPositions.current.get(id);
-        const x = lastPosition?.x ?? 0;
-        const z = lastPosition?.z ?? 0;
-        const y = getElevation(x, z);
-        nextEffects.push({
-          id: `explode-${id}`,
+      if (event.type === 'enemy_killed' || event.type === 'enemy_escaped') {
+        const y = getElevation(event.position.x, event.position.z);
+        effect = {
+          id: `explode-${nextEffectId.current++}`,
           type: 'explosion',
-          position: new THREE.Vector3(x, y + 1, z),
-          startTime: now,
+          position: new THREE.Vector3(event.position.x, y + 1, event.position.z),
+          startTime: Date.now(),
           duration: EXPLOSION_DURATION,
-        });
-        enemyPositions.current.delete(id);
+          particleCount: stress >= 110 ? 6 : stress >= 80 ? 8 : stress >= 55 ? 12 : 16,
+        };
       }
-    }
 
-    prevEnemyIds.current = currentIds;
+      if (!effect) return;
 
+      startTransition(() => {
+        setEffects((prev) => {
+          if (effect.type === 'smoke' && prev.length >= effectBudgetRef.current) {
+            return prev;
+          }
+          if (prev.length < effectBudgetRef.current) {
+            return [...prev, effect];
+          }
+          return [...prev.slice(1), effect];
+        });
+      });
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useFrame((_, delta) => {
+    if (effects.length === 0) return;
+    cleanupTimer.current += delta;
+    if (cleanupTimer.current < 0.12) return;
+    cleanupTimer.current = 0;
+    const now = Date.now();
     startTransition(() => {
       setEffects((prev) => {
         const active = prev.filter((effect) => now - effect.startTime < effect.duration);
-        return nextEffects.length > 0 ? [...active, ...nextEffects] : active;
+        return active.length === prev.length ? prev : active;
       });
     });
   });
 
   return (
     <>
-      {effects.map(effect => (
+      {effects.map((effect) => (
         <ParticleCloud key={effect.id} effect={effect} />
       ))}
     </>
@@ -80,11 +119,10 @@ export function ParticleEffects() {
 function ParticleCloud({ effect }: { effect: ParticleEffect }) {
   const groupRef = useRef<THREE.Group>(null);
   const particlesRef = useRef<{ offset: THREE.Vector3; velocity: THREE.Vector3 }[]>([]);
+  const currentWorld = useGameStore((s) => s.currentWorld);
 
-  // Initialize particles once
   useEffect(() => {
-    const count = effect.type === 'smoke' ? 12 : 16;
-    particlesRef.current = Array.from({ length: count }, () => {
+    particlesRef.current = Array.from({ length: effect.particleCount }, () => {
       const angle = Math.random() * Math.PI * 2;
       const speed = effect.type === 'explosion' ? 2 + Math.random() * 4 : 0.5 + Math.random() * 1.5;
       const upSpeed = effect.type === 'explosion' ? 1 + Math.random() * 3 : 1 + Math.random() * 2;
@@ -93,11 +131,11 @@ function ParticleCloud({ effect }: { effect: ParticleEffect }) {
         velocity: new THREE.Vector3(
           Math.cos(angle) * speed,
           upSpeed,
-          Math.sin(angle) * speed
+          Math.sin(angle) * speed,
         ),
       };
     });
-  }, [effect.type]);
+  }, [effect.particleCount, effect.type]);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -105,33 +143,29 @@ function ParticleCloud({ effect }: { effect: ParticleEffect }) {
     const t = elapsed / effect.duration;
     if (t >= 1) return;
 
-    // Update particle positions
     particlesRef.current = particlesRef.current.map((particle) => ({
       offset: particle.offset.clone().addScaledVector(particle.velocity, delta),
       velocity: particle.velocity.clone().add(new THREE.Vector3(0, -delta * 3, 0)),
     }));
 
-    // Fade out
     groupRef.current.children.forEach((child, i) => {
-      const p = particlesRef.current[i];
-      if (!p) return;
-      child.position.copy(p.offset);
+      const particle = particlesRef.current[i];
+      if (!particle) return;
+      child.position.copy(particle.offset);
       const mesh = child as THREE.Mesh;
       if (mesh.material instanceof THREE.MeshBasicMaterial) {
         mesh.material.opacity = (1 - t) * (effect.type === 'smoke' ? 0.5 : 0.8);
       }
-      // Scale down over time
       const s = effect.type === 'smoke' ? 0.3 + t * 0.4 : 0.2 * (1 - t * 0.5);
       child.scale.setScalar(s);
     });
   });
 
-  const color = effect.type === 'smoke' ? '#aaaaaa' : '#ff6622';
-  const count = effect.type === 'smoke' ? 12 : 16;
+  const color = effect.type === 'smoke' ? '#aaaaaa' : currentWorld?.accent ?? '#ff6622';
 
   return (
     <group ref={groupRef} position={effect.position}>
-      {Array.from({ length: count }, (_, i) => (
+      {Array.from({ length: effect.particleCount }, (_, i) => (
         <mesh key={i}>
           <octahedronGeometry args={[0.3, 0]} />
           <meshBasicMaterial color={color} transparent opacity={0.5} depthWrite={false} />

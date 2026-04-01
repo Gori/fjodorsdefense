@@ -3,20 +3,16 @@
 import { useGameStore } from '@/lib/store';
 import { TOWER_DEFS } from '@/lib/towerDefs';
 import { useEffect, useCallback, useState } from 'react';
-
-const TOWER_DESCS: Record<string, string> = {
-  scratchingPost: 'Fast attack',
-  yarnLauncher: 'Slows enemies',
-  laserPointer: 'Long range sniper',
-  catnipBomb: 'Area damage',
-};
+import { playRetroSfx } from '@/lib/audio/sfx';
+import { useCampaignStore } from '@/lib/campaignStore';
+import { resolveTowerDef } from '@/lib/doctrines';
 
 const F = 'var(--font-game)';
 const S = '2px 2px 0 rgba(0,0,0,1), 4px 4px 0 rgba(0,0,0,0.7)';
 const GOLD_S = '2px 2px 0 rgba(0,0,0,1), 4px 4px 0 rgba(255,214,102,0.35)';
 const DANGER_S = '2px 2px 0 rgba(0,0,0,1), 4px 4px 0 rgba(255,71,87,0.35)';
 
-function TowerIcon({ id, size = 44 }: { id: string; size?: number }) {
+function TowerIcon({ id, size = 52 }: { id: string; size?: number }) {
   const s = size;
   switch (id) {
     case 'scratchingPost':
@@ -59,6 +55,41 @@ function TowerIcon({ id, size = 44 }: { id: string; size?: number }) {
           <circle cx="20" cy="22" r="3" fill="#fff" opacity="0.3" />
         </svg>
       );
+    case 'treatDispenser':
+      return (
+        <svg width={s} height={s} viewBox="0 0 40 40" fill="none">
+          <rect x="10" y="8" width="20" height="24" rx="5" fill="#d8973c" />
+          <rect x="14" y="12" width="12" height="8" rx="2" fill="#f6d38f" />
+          <circle cx="20" cy="26" r="4" fill="#8b5a2b" />
+          <circle cx="20" cy="26" r="2" fill="#ffd666" />
+        </svg>
+      );
+    case 'birdWhistle':
+      return (
+        <svg width={s} height={s} viewBox="0 0 40 40" fill="none">
+          <path d="M11 20c0-5 4-9 9-9h5a4 4 0 0 1 0 18h-5c-5 0-9-4-9-9Z" fill="#2cb9b0" />
+          <circle cx="24" cy="20" r="4" fill="#0f172a" opacity="0.35" />
+          <path d="M31 14l5-3M32 20h6M31 26l5 3" stroke="#7de7df" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case 'tunaMortar':
+      return (
+        <svg width={s} height={s} viewBox="0 0 40 40" fill="none">
+          <circle cx="20" cy="22" r="11" fill="#6e8aa5" />
+          <rect x="17" y="8" width="6" height="12" rx="3" fill="#d7e2ee" />
+          <path d="M14 29h12l-2 4h-8l-2-4Z" fill="#314559" />
+          <circle cx="20" cy="22" r="3" fill="#cbd5e1" opacity="0.7" />
+        </svg>
+      );
+    case 'magnetCollar':
+      return (
+        <svg width={s} height={s} viewBox="0 0 40 40" fill="none">
+          <path d="M11 24a9 9 0 1 1 18 0" stroke="#40d9ff" strokeWidth="5" strokeLinecap="round" />
+          <rect x="10" y="20" width="6" height="10" rx="2" fill="#0f172a" />
+          <rect x="24" y="20" width="6" height="10" rx="2" fill="#0f172a" />
+          <circle cx="20" cy="24" r="3" fill="#d9fbff" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -69,26 +100,36 @@ export function TowerSelector() {
   const selectTowerDef = useGameStore((s) => s.selectTowerDef);
   const money = useGameStore((s) => s.money);
   const availableTowerIds = useGameStore((s) => s.availableTowerIds);
+  const doctrineChoices = useCampaignStore((s) => s.activeSave.doctrineChoices);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const towerList = availableTowerIds
-    .map((towerId) => TOWER_DEFS[towerId])
+    .map((towerId) => resolveTowerDef(towerId, doctrineChoices[towerId]))
     .filter((def): def is (typeof TOWER_DEFS)[keyof typeof TOWER_DEFS] => Boolean(def));
   const stopClickThrough = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  const toggleTower = useCallback(
+    (towerId: string | null) => {
+      const nextId = selectedTowerDef === towerId ? null : towerId;
+      selectTowerDef(nextId);
+      playRetroSfx('select', nextId ? 1 : 0.75);
+    },
+    [selectTowerDef, selectedTowerDef],
+  );
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         selectTowerDef(null);
+        playRetroSfx('select', 0.75);
         return;
       }
       const idx = parseInt(e.key) - 1;
       if (idx >= 0 && idx < towerList.length) {
         const def = towerList[idx];
         if (money >= def.cost)
-          selectTowerDef(selectedTowerDef === def.id ? null : def.id);
+          toggleTower(def.id);
       }
     },
-    [money, selectTowerDef, selectedTowerDef, towerList],
+    [money, selectTowerDef, toggleTower, towerList],
   );
 
   useEffect(() => {
@@ -102,14 +143,14 @@ export function TowerSelector() {
       onPointerDown={stopClickThrough}
       onClick={stopClickThrough}
       style={{
-        bottom: 20,
+        bottom: 18,
         left: 0,
         right: 0,
         display: 'flex',
         justifyContent: 'center',
       }}
     >
-      <div className="pointer-events-auto flex items-end" style={{ gap: 10 }}>
+      <div className="pointer-events-auto flex items-end" style={{ gap: 14 }}>
         {towerList.map((def, i) => {
           const canAfford = money >= def.cost;
           const isSelected = selectedTowerDef === def.id;
@@ -126,7 +167,7 @@ export function TowerSelector() {
                     bottom: '100%',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    marginBottom: 10,
+                    marginBottom: 12,
                     whiteSpace: 'nowrap',
                     pointerEvents: 'none',
                     display: 'flex',
@@ -135,11 +176,11 @@ export function TowerSelector() {
                     gap: 4,
                   }}
                 >
-                  <span style={{ fontFamily: F, fontSize: 16, fontWeight: 700, color: '#fff', textShadow: S }}>
-                    {TOWER_DESCS[def.id]}
+                  <span style={{ fontFamily: F, fontSize: 18, fontWeight: 700, color: '#fff', textShadow: S }}>
+                    {def.role ?? def.name}
                   </span>
-                  <div className="flex items-center" style={{ gap: 10, fontFamily: F, fontSize: 13, fontWeight: 600, color: '#D0D0D0', textShadow: S }}>
-                    <span>DMG {def.damage}</span>
+                  <div className="flex items-center" style={{ gap: 10, fontFamily: F, fontSize: 15, fontWeight: 600, color: '#D0D0D0', textShadow: S }}>
+                    <span>{def.statLine ?? `DMG ${def.damage}`}</span>
                     <span>·</span>
                     <span>RNG {def.range}</span>
                   </div>
@@ -151,7 +192,7 @@ export function TowerSelector() {
                 onPointerDown={stopClickThrough}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (canAfford) selectTowerDef(isSelected ? null : def.id);
+                  if (canAfford) toggleTower(def.id);
                 }}
                 disabled={!canAfford}
                 className={canAfford ? 'cursor-pointer' : 'cursor-not-allowed'}
@@ -159,10 +200,10 @@ export function TowerSelector() {
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 5,
-                  padding: '10px 18px 10px',
-                  minWidth: 90,
-                  borderWidth: 2,
+                  gap: 7,
+                  padding: '12px 22px 12px',
+                  minWidth: 108,
+                  borderWidth: 3,
                   borderStyle: 'solid',
                   transition: 'all 0.15s',
                   position: 'relative',
@@ -196,10 +237,10 @@ export function TowerSelector() {
                 <div
                   style={{
                     position: 'absolute',
-                    top: 5,
-                    right: 7,
+                    top: 6,
+                    right: 8,
                     fontFamily: F,
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: 700,
                     color: isSelected ? def.color : canAfford ? '#9A9A9A' : '#5A5A5A',
                     lineHeight: 1,
@@ -215,14 +256,14 @@ export function TowerSelector() {
                     ? 'drop-shadow(2px 2px 0 rgba(0,0,0,0.95)) drop-shadow(4px 4px 0 rgba(0,0,0,0.7))'
                     : 'drop-shadow(2px 2px 0 rgba(0,0,0,0.95)) grayscale(0.8) brightness(0.5)',
                 }}>
-                  <TowerIcon id={def.id} size={34} />
+                  <TowerIcon id={def.id} size={40} />
                 </div>
 
                 {/* Name */}
                 <span
                   style={{
                     fontFamily: F,
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: 700,
                     lineHeight: 1.1,
                     color: isSelected ? '#FFFFFF' : canAfford ? '#E0E0E0' : '#7A7A7A',
@@ -234,11 +275,27 @@ export function TowerSelector() {
                   {def.name}
                 </span>
 
+                {doctrineChoices[def.id] && (
+                  <span
+                    style={{
+                      fontFamily: F,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      lineHeight: 1,
+                      color: '#9fd5ff',
+                      textTransform: 'uppercase',
+                      textShadow: S,
+                    }}
+                  >
+                    {def.role}
+                  </span>
+                )}
+
                 {/* Price — gold if affordable, RED if can't afford */}
                 <span
                   style={{
                     fontFamily: F,
-                    fontSize: 18,
+                    fontSize: 24,
                     fontWeight: 700,
                     lineHeight: 1,
                     color: canAfford ? '#FFD666' : '#FF4757',

@@ -1,12 +1,12 @@
 'use client';
 
-import { useGameStore } from '@/lib/store';
-import { TOWER_DEFS } from '@/lib/towerDefs';
+import { useRuntimeSnapshot } from '@/lib/runtime';
 import { getElevation } from '@/lib/elevation';
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Mesh, MeshBasicMaterial, MeshStandardMaterial } from 'three';
 import type { Group } from 'three';
+import { resolveTowerDef } from '@/lib/doctrines';
 
 const TOWER_SCALE = 0.45;
 
@@ -332,11 +332,131 @@ function CatnipBombTower({ position }: { position: [number, number, number] }) {
   );
 }
 
+function TreatDispenserTower({ position }: { position: [number, number, number] }) {
+  const dialRef = useRef<Group>(null);
+
+  useFrame((state) => {
+    if (!dialRef.current) return;
+    dialRef.current.rotation.y = state.clock.elapsedTime * 1.5;
+  });
+
+  return (
+    <group position={position} scale={TOWER_SCALE}>
+      <mesh position={[0, 0.2, 0]}>
+        <cylinderGeometry args={[0.9, 1.0, 0.4, 10]} />
+        <meshStandardMaterial color="#5b402b" roughness={0.85} />
+      </mesh>
+      <mesh position={[0, 0.95, 0]}>
+        <boxGeometry args={[1.1, 1.4, 1.1]} />
+        <meshStandardMaterial color="#d8973c" roughness={0.55} metalness={0.2} />
+      </mesh>
+      <group ref={dialRef} position={[0, 1.0, 0.58]}>
+        <mesh>
+          <cylinderGeometry args={[0.22, 0.22, 0.1, 18]} />
+          <meshStandardMaterial color="#f4d58d" roughness={0.4} />
+        </mesh>
+        <mesh position={[0, 0.12, 0]}>
+          <boxGeometry args={[0.06, 0.18, 0.06]} />
+          <meshStandardMaterial color="#5b402b" />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+function BirdWhistleTower({ position }: { position: [number, number, number] }) {
+  const pulseRef = useRef<Mesh>(null);
+
+  useFrame((state) => {
+    if (!pulseRef.current || !(pulseRef.current.material instanceof MeshStandardMaterial)) return;
+    const pulse = 0.35 + Math.max(0, Math.sin(state.clock.elapsedTime * 4.5)) * 0.9;
+    pulseRef.current.material.emissiveIntensity = pulse;
+  });
+
+  return (
+    <group position={position} scale={TOWER_SCALE}>
+      <mesh position={[0, 0.16, 0]}>
+        <cylinderGeometry args={[0.8, 0.9, 0.32, 10]} />
+        <meshStandardMaterial color="#16343d" roughness={0.7} metalness={0.3} />
+      </mesh>
+      <mesh position={[0, 0.95, 0]} rotation={[0.2, 0, 0]}>
+        <cylinderGeometry args={[0.22, 0.28, 1.6, 12]} />
+        <meshStandardMaterial color="#2cb9b0" roughness={0.4} metalness={0.5} />
+      </mesh>
+      <mesh ref={pulseRef} position={[0, 1.58, 0.28]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.24, 0.05, 6, 16]} />
+        <meshStandardMaterial color="#7de7df" emissive="#7de7df" emissiveIntensity={0.5} roughness={0.2} />
+      </mesh>
+    </group>
+  );
+}
+
+function TunaMortarTower({ position }: { position: [number, number, number] }) {
+  const barrelRef = useRef<Group>(null);
+
+  useFrame((state) => {
+    if (!barrelRef.current) return;
+    barrelRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.8) * 0.35;
+  });
+
+  return (
+    <group position={position} scale={TOWER_SCALE}>
+      <mesh position={[0, 0.18, 0]}>
+        <cylinderGeometry args={[1.0, 1.1, 0.36, 12]} />
+        <meshStandardMaterial color="#314559" roughness={0.8} metalness={0.45} />
+      </mesh>
+      <group ref={barrelRef} position={[0, 0.75, 0]}>
+        <mesh rotation={[1.0, 0, 0]}>
+          <cylinderGeometry args={[0.28, 0.36, 1.45, 12]} />
+          <meshStandardMaterial color="#6e8aa5" roughness={0.45} metalness={0.55} />
+        </mesh>
+        <mesh position={[0, 0.28, 0.55]}>
+          <sphereGeometry args={[0.16, 10, 8]} />
+          <meshStandardMaterial color="#d7e2ee" roughness={0.35} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+function MagnetCollarTower({ position }: { position: [number, number, number] }) {
+  const arcRef = useRef<Group>(null);
+
+  useFrame((state) => {
+    if (!arcRef.current) return;
+    arcRef.current.rotation.y += 0.03;
+    arcRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 1.8) * 0.12;
+  });
+
+  return (
+    <group position={position} scale={TOWER_SCALE}>
+      <mesh position={[0, 0.18, 0]}>
+        <cylinderGeometry args={[0.95, 1.05, 0.36, 12]} />
+        <meshStandardMaterial color="#102332" roughness={0.65} metalness={0.5} />
+      </mesh>
+      <group ref={arcRef} position={[0, 1.05, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.58, 0.09, 10, 22, Math.PI]} />
+          <meshStandardMaterial color="#40d9ff" emissive="#40d9ff" emissiveIntensity={0.7} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, 0.1, 0]}>
+          <sphereGeometry args={[0.18, 10, 8]} />
+          <meshStandardMaterial color="#d9fbff" emissive="#d9fbff" emissiveIntensity={0.9} roughness={0.15} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 const TOWER_COMPONENTS: Record<string, React.FC<{ position: [number, number, number] }>> = {
   scratchingPost: ScratchingPost,
   yarnLauncher: YarnLauncher,
   laserPointer: LaserPointerTower,
   catnipBomb: CatnipBombTower,
+  treatDispenser: TreatDispenserTower,
+  birdWhistle: BirdWhistleTower,
+  tunaMortar: TunaMortarTower,
+  magnetCollar: MagnetCollarTower,
 };
 
 // ── Glowing base ring for visibility ─────────────────────────────────
@@ -360,8 +480,11 @@ function TowerBaseGlow({ x, z, y, color }: { x: number; z: number; y: number; co
   );
 }
 
-function TowerMesh({ tower }: { tower: { id: string; defId: string; position: { x: number; z: number } } }) {
-  const def = TOWER_DEFS[tower.defId];
+function TowerMesh({ tower }: { tower: { id: string; defId: string; position: { x: number; z: number }; doctrineId?: string | null; rangeBonus?: number; fireRateBonus?: number } }) {
+  const def = resolveTowerDef(tower.defId, tower.doctrineId, {
+    rangeBonus: tower.rangeBonus,
+    fireRateBonus: tower.fireRateBonus,
+  });
   const Component = TOWER_COMPONENTS[tower.defId];
   const terrainY = getElevation(tower.position.x, tower.position.z);
   const pos: [number, number, number] = [tower.position.x, terrainY, tower.position.z];
@@ -388,7 +511,7 @@ function TowerMesh({ tower }: { tower: { id: string; defId: string; position: { 
 }
 
 export function Towers() {
-  const towers = useGameStore((s) => s.towers);
+  const { towers } = useRuntimeSnapshot();
   return (
     <>
       {towers.map((tower) => (

@@ -114,4 +114,14 @@ export const PATH_MAIN: Vec2[] = [
   { x: -35.513, z: -0.067 },
 ];
 
-export const ALL_PATHS: Vec2[][] = [PATH_MAIN];
+export const PATH_NORTH: Vec2[] = PATH_MAIN.map((point, index) => ({
+  x: point.x + Math.sin(index * 0.17) * 0.9 + (point.z > 18 ? 1.2 : point.z < 2 ? -0.6 : 0.3),
+  z: point.z + (point.x > 3 ? -1.6 : point.x < -14 ? 1.25 : -0.4),
+}));
+
+export const PATH_SOUTH: Vec2[] = PATH_MAIN.map((point, index) => ({
+  x: point.x + Math.cos(index * 0.21) * -0.8 + (point.z > 20 ? -1.4 : point.z < 1 ? 1.2 : -0.2),
+  z: point.z + (point.x > 2 ? 1.7 : point.x < -14 ? -1.35 : 0.55),
+}));
+
+export const ALL_PATHS: Vec2[][] = [PATH_MAIN, PATH_NORTH, PATH_SOUTH];
